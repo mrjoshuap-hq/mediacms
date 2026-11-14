@@ -1547,6 +1547,8 @@
       
         
       
+        
+      
     
     
     
@@ -1766,6 +1768,29 @@
   
   <span class="md-ellipsis">
     Settings catalog
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/admin/permissions-changes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Permission access changes
     
   </span>
   
@@ -3022,6 +3047,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#upgrade-impact-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      Upgrade impact rows
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#scenarios" class="md-nav__link">
     <span class="md-ellipsis">
       Scenarios
@@ -3164,6 +3198,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#upgrade-impact-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      Upgrade impact rows
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#scenarios" class="md-nav__link">
     <span class="md-ellipsis">
       Scenarios
@@ -3235,6 +3278,39 @@
 <li><strong>Content migration</strong> imports media from another platform (Kaltura, YouTube, Panopto).</li>
 <li><strong>Site upgrade</strong> moves an existing MediaCMS install to a new MediaCMS version.</li>
 </ul>
+<h2 id="upgrade-impact-rows">Upgrade impact rows<a class="headerlink" href="#upgrade-impact-rows" title="Permanent link">&para;</a></h2>
+<p>When a change needs an extra operator step after update, add a row to the <strong>Upgrade impact</strong> table in <code>docs/_shared/fork-whats-new.md</code> in the same pull request.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Models / DB migrations</td>
+<td>Django model or field changes that need <code>migrate</code></td>
+</tr>
+<tr>
+<td>Frontend build</td>
+<td>React or other Node bundles that must be copied to <code>static/</code></td>
+</tr>
+<tr>
+<td>Language rebuild</td>
+<td>New or changed translatable strings (<code>process_translations</code>)</td>
+</tr>
+<tr>
+<td>Restart</td>
+<td>Services that must reload (web, celery_worker, celery_beat)</td>
+</tr>
+<tr>
+<td>Notes</td>
+<td>Link to the guide or the access-change page</td>
+</tr>
+</tbody>
+</table>
+<p>Do not leave the table stale. A permissions or ACL behavior change also needs a row in <a href="../../guides/admin/permissions-changes/">Permission access changes</a> when access differs.</p>
 <h2 id="scenarios">Scenarios<a class="headerlink" href="#scenarios" title="Permanent link">&para;</a></h2>
 <p>Use the <a href="../scenario-template/">scenario template</a>. One scenario is one role and one path. A branch is a new scenario.</p>
 

@@ -16,7 +16,7 @@
         <link rel="prev" href="../site/">
       
       
-        <link rel="next" href="../content-migration/">
+        <link rel="next" href="../permissions-changes/">
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
@@ -1560,6 +1560,8 @@
       
         
       
+        
+      
     
     
     
@@ -1955,6 +1957,29 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions-changes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Permission access changes
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -3544,22 +3569,22 @@
 <tr>
 <td><code>UPLOAD_MEDIA_ALLOWED</code></td>
 <td><code>True</code></td>
-<td><code>False</code> hides the upload button only</td>
+<td>Global upload kill switch. The upload button also follows <code>CAN_ADD_MEDIA</code>, approval, and quota</td>
 </tr>
 <tr>
 <td><code>CAN_LIKE_MEDIA</code></td>
 <td><code>True</code></td>
-<td>Shows the like button</td>
+<td>Shows the like button and allows the like API action</td>
 </tr>
 <tr>
 <td><code>CAN_DISLIKE_MEDIA</code></td>
 <td><code>True</code></td>
-<td>Shows the dislike button</td>
+<td>Shows the dislike button and allows the dislike API action</td>
 </tr>
 <tr>
 <td><code>CAN_REPORT_MEDIA</code></td>
 <td><code>True</code></td>
-<td>Shows the report button</td>
+<td>Shows the report button and allows the report API action</td>
 </tr>
 <tr>
 <td><code>CAN_SHARE_MEDIA</code></td>

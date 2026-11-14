@@ -121,6 +121,18 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/guides/admin/people/"/>
     </url>
     <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/guides/admin/permissions-audit-matrix/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/guides/admin/permissions-audit-matrix/"/>
+    </url>
+    <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/guides/admin/permissions-changes/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/guides/admin/permissions-changes/"/>
+    </url>
+    <url>
         <loc>https://mrjoshuap.github.io/mediacms/latest/guides/admin/portal-map/</loc>
         <lastmod>2026-11-14</lastmod>
         <changefreq>daily</changefreq>

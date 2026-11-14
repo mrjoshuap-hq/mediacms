@@ -32,3 +32,5 @@ Add any other context about the problem here.
 **AI disclosure**
 - [ ] I personally observed this issue on a real MediaCMS installation and verified every detail above. (AI tools may have helped with wording or investigation, but the facts are mine to confirm.)
 - AI tools used, if any:
+
+Agents who draft this issue must leave the checkbox above unticked and end the issue with the AI disclosure footer in `skills/maintainer/SKILL.md`.

@@ -18,3 +18,5 @@ Add any other context or screenshots about the feature request here.
 
 **AI disclosure**
 - [ ] This request reflects a real need; AI-generated suggestions were reviewed and kept only what I can vouch for.
+
+Agents who draft this issue must leave the checkbox above unticked and end the issue with the AI disclosure footer in `skills/maintainer/SKILL.md`.

@@ -1,0 +1,12 @@
+---
+description: Fork maintainer rules and the AI disclosure footer
+alwaysApply: true
+---
+
+Before writing a GitHub issue, comment, pull request, review, release note, or upstream draft, read `skills/maintainer/SKILL.md`.
+
+Every agent-produced artifact ends with:
+
+`_AI disclosure: drafted by an AI agent (<agent name>) for @mrjoshuap._`
+
+Agent-authored commits include an `Assisted-by:` trailer. Leave the PR template AI disclosure and Attestation checkboxes unticked.

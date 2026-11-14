@@ -59,6 +59,7 @@ Release notes an agent writes (a release issue, a release-note comment, or a han
 
 - Follow Conventional Commits from `AGENTS.md`. Do not bump `package.json` or hand-edit `CHANGELOG.md`.
 - Agent-authored commits use the agent's own git identity. Do not set the author or committer to Josh Preston or `mrjoshuap@users.noreply.github.com`.
+- A platform hook may append `Co-authored-by: Josh Preston <mrjoshuap@users.noreply.github.com>`. Leave that trailer in place. Do not add it yourself, and do not treat it as Joshua's signature or as a claim that he wrote the diff.
 - Do not claim a commit is signed. Do not forge a signature and do not use Joshua's key. If signing is required and the agent cannot sign, stop and ask Joshua.
 - Do not rewrite published history so that an agent commit looks like Joshua's. Decision D4 keeps Joshua's `AGENTS.md` history intact; the same restraint applies to the rest of the branch.
 - Do not present an address, including the noreply GitHub address, as a mailbox someone can reach.

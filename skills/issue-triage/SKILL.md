@@ -13,9 +13,11 @@ description: Triage MediaCMS GitHub or Gitea issues and draft minimal-impact fix
 4. If behavior is intentionally absent, consider `@unimplemented` only for stubbed tests — see skill `test-ci`.
 5. Do not commit or open PRs unless the user asks.
 6. When fixing, add or update tests under the matching `tests/` area when practical.
+7. When you post an issue, issue comment, or triage plan on GitHub, follow the AI disclosure rule in `skills/maintainer/SKILL.md`. Leave issue-template disclosure checkboxes unticked.
 
 ## Additional resources
 
 - Root `AGENTS.md` (change impact + hard rules)
+- Skill `maintainer` (AI disclosure footer for issues, comments, and plans)
 - Skill `test-ci`, `rbac-permissions`, `media-pipeline`, or `admin-portal` as the domain dictates
 - `tests/` layout mirroring apps (`api/`, `models/`, `rbac/`, `pipeline/`, …)

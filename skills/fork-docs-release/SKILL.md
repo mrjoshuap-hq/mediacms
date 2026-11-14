@@ -14,11 +14,13 @@ description: Maintain MediaCMS fork documentation, mike/GitHub Pages channels, w
 5. **Branches:** `MEDIACMS_STABLE_BRANCH` (default `main`) and `MEDIACMS_BETA_BRANCH` (default `mediacms-next`). Workflows list both under `on.push` because triggers cannot read vars.
 6. **Mike aliases:** stable → `dev`, beta → `beta`, tags → `latest`. Pages source must be **GitHub Actions** (`docs.yml` → mike → `actions/deploy-pages`).
 7. **GHCR:** `release.yml` publishes date-stamped tags from `version/FORK_VERSION`. Pushes to `mediacms-next` → pre-release + `:beta` / full `:beta`. Matching stamp tags from `main` → `:stable`. Prefer this over enabling semantic-release unless asked.
+8. **Disclosure:** a release issue, release-note comment, or hand-written GitHub Release body that an agent writes ends with the AI disclosure footer in `skills/maintainer/SKILL.md`. Do not add that footer to `docs/_shared/fork-whats-new.md`, generated what's-new pages, `CHANGELOG.md`, or the published `INSTALL-*.md` asset.
 
 ## Additional resources
 
 - `docs/en/releases/` (index, compare, features, fixes, migrations, upgrade)
 - `docs/en/contributing/writing.md`
+- Skill `maintainer` (AI disclosure footer on agent-written release notes)
 - `docs/_shared/fork-whats-new.md`
 - `scripts/prepare_docs_build.py`
 - `.github/workflows/docs.yml`, `.github/workflows/release.yml`

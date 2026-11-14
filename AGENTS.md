@@ -72,6 +72,7 @@ Read the matching skill under `skills/<name>/SKILL.md` before deep work. Cursor 
 | `test-ci` | Pytest, Jest, CI failures, pre-commit, coverage |
 | `merge-hygiene` | Merges into `mediacms-next`, `local_settings` stash |
 | `issue-triage` | Issue applicability, minimal fix plans |
+| `maintainer` | Fork branches, upstream PRs, disclosure, demos, labels |
 | `dev-stack` | Compose up/down, rebuilds, restarts, :80 vs :8088 |
 | `dev-manage` | `manage.py`, fake media, DB export, shell in web |
 | `dev-api` | Live `/api/v1` smoke, upload metadata, Swagger |
@@ -88,3 +89,17 @@ Do not invent architecture — read these when needed:
 - Settings catalog: `docs/en/guides/admin/settings.md`
 - Releases / fork: `docs/en/releases/`
 - Writing docs: `docs/en/contributing/writing.md`
+
+## Supplements and precedence
+
+Fork-only supplements may add or narrow rules. They must not contradict the files above them. `skills/maintainer` is the fork supplement. `skills/github-orchestration` is planned (issue #8) and is not in the skill index until that file exists.
+
+When two sources disagree, use this order:
+
+1. Upstream rules for anything sent upstream: the upstream PR template (AI disclosure + attestation), upstream `CONTRIBUTING`, and maintainer requests in the PR.
+2. `AGENTS.md` on `mediacms-next`: hard rules and change impact policy. **Authoritative.**
+3. `skills/<domain>/SKILL.md`: domain workflows. Authoritative for their domain.
+4. `skills/maintainer/SKILL.md` (fork-only): Joshua's specifics. It may **add or narrow** rules. It must not contradict 1-3. On a conflict, open an issue and fix the authoritative file instead.
+5. Agent-side memory or bot skills: personal preferences only. They point to the repo files and do not duplicate them.
+
+Agent-produced GitHub artifacts follow the AI disclosure rule in `skills/maintainer` (agents never tick the PR template disclosure or attestation boxes).

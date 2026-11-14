@@ -349,6 +349,48 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/reference/whats-new/"/>
     </url>
     <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/releases/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/"/>
+    </url>
+    <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/releases/compare/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/compare/"/>
+    </url>
+    <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/releases/features/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/features/"/>
+    </url>
+    <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/releases/fixes/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/fixes/"/>
+    </url>
+    <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/releases/frontend/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/frontend/"/>
+    </url>
+    <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/releases/migrations/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/migrations/"/>
+    </url>
+    <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/releases/upgrade-tips/</loc>
+        <lastmod>2026-11-14</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/upgrade-tips/"/>
+    </url>
+    <url>
         <loc>https://mrjoshuap.github.io/mediacms/latest/roles/</loc>
         <lastmod>2026-11-14</lastmod>
         <changefreq>daily</changefreq>

@@ -42,7 +42,7 @@ All workers must use the same file system as the web server. This can be one hos
 
 The `create_hls` task uses a Redis cache lock so two workers do not write the same media HLS tree at once. When a worker receives an `encoding_id`, it updates that resolution variant in place (incremental). When `encoding_id` is omitted, it rebuilds the HLS tree from every successful encoding.
 
-Set `MP4HLS_COMMAND` to a working Bento4 `mp4hls` binary. On some aarch64 hosts the packaged binary can fail; use a native build or run encoding workers on an architecture that Bento4 supports.
+Set `MP4HLS_COMMAND` to a working Bento4 `mp4hls` binary. On some aarch64 hosts the packaged binary can fail; use a native build or run encoding workers on an architecture that Bento4 supports. Local Docker builds that warn `InvalidBaseImagePlatform` for the pinned FFmpeg donor image are the same class of issue; see [amd64 media tools in the image](../../releases/fixes.md#amd64-media-tools-in-the-image).
 
 The beat task `cleanup_encoding_chunks` removes stuck chunk `Encoding` rows and unreferenced source `.mkv` segments older than `ENCODING_CHUNKS_RETENTION_HOURS` (default 24).
 

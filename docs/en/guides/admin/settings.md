@@ -166,6 +166,7 @@ Change `DEFAULT_FROM_EMAIL` and the mail credentials before production. The **He
 | `MIGRATION_API_TIMEOUT` | `60` | Seconds for a source API call |
 | `MIGRATION_DOWNLOAD_TIMEOUT` | `1800` | Seconds for a file download |
 | `MIGRATION_MAX_RETRIES` | `5` | Retries for a failed item |
+| `FILESYSTEM_IMPORT_ROOT` | `/external-media_files` | Directory whose child directories are the mounts that a **Filesystem library** migration can sync. Bind your library under it on the web and Celery containers. MediaCMS only scans it. nginx never publishes it. See [Content migration](content-migration.md#filesystem-library) |
 
 ## Hosts, security, and storage
 
@@ -178,11 +179,11 @@ Change `DEFAULT_FROM_EMAIL` and the mail credentials before production. The **He
 | `SECRET_KEY` | From the environment or `.secret_key` | Required. MediaCMS stops without it |
 | `DJANGO_ADMIN_URL` | `admin/` | Admin portal path. Keep the trailing slash |
 | `USE_X_ACCEL_REDIRECT` | `True` | nginx checks access for protected media files |
-| `X_ACCEL_PROTECTED_PATHS` | `["encoded", "hls", "original"]` | Folders under `MEDIA_ROOT` that are protected |
+| `X_ACCEL_PROTECTED_PATHS` | `["encoded", "hls", "original", "thumbnails", "subtitles", "categories"]` | Folders under `MEDIA_ROOT` that are protected |
 | `X_ACCEL_AUTH_CACHE_SECONDS` | `300` | Cache time for the access check |
 | `MEDIA_ROOT` | `<BASE_DIR>/media_files/` | Where uploaded and encoded media is stored |
 | `TEMP_DIRECTORY` | `/tmp` | Do not set it inside `BASE_DIR` |
-| `MEDIA_UPLOAD_DIR`, `MEDIA_ENCODING_DIR`, `HLS_DIR` | `original/`, `encoded/`, `<MEDIA_ROOT>/hls/` | Storage sub-directories |
+| `MEDIA_UPLOAD_DIR`, `MEDIA_ENCODING_DIR`, `THUMBNAIL_UPLOAD_DIR`, `SUBTITLES_UPLOAD_DIR`, `HLS_DIR` | `original/`, `encoded/`, `thumbnails/`, `subtitles/`, `<MEDIA_ROOT>/hls/` | Storage sub-directories. New files go to `<dir>/<aa>/<bb>/<uid>/…`, where `<aa>` and `<bb>` are the first two pairs of hex digits of the media UID. See [Manage media](../operator/manage-media.md#move-media-to-the-sharded-path-layout) |
 | `USE_X_FORWARDED_HOST`, `SECURE_PROXY_SSL_HEADER`, `SECURE_SSL_REDIRECT`, `CSRF_COOKIE_SECURE`, `SESSION_COOKIE_SECURE`, `CSRF_TRUSTED_ORIGINS` | Not set in `settings.py` | Set them behind an HTTPS reverse proxy. The **Health** page checks them |
 | `TRUSTED_PROXIES` | `[]` | IP addresses or CIDR networks that may set `X-Forwarded-For` / `X-Real-IP`. Empty means proxy headers are not trusted |
 | `PROXY_AWARE_MIDDLEWARE_ENABLED` | `bool(TRUSTED_PROXIES)` | When `True`, `ProxyAwareMiddleware` sets `request.client_ip`. Override in `local_settings.py` if needed |

@@ -148,6 +148,20 @@ def get_file_type(filename):
 
 
 def rm_file(filename):
+    """Remove one MediaCMS-owned file.
+
+    A symlink (a "preserve" import pointing at an external archive) is only ever
+    unlinked: the target is never followed, opened or removed, and a dangling link is
+    removed too.
+    """
+    if os.path.islink(filename):
+        try:
+            os.unlink(filename)
+            logger.info("Removed symlink without following it - filename=%s", filename)
+            return True
+        except OSError as e:
+            logger.warning("Error removing symlink - filename=%s, error=%s", filename, str(e))
+        return False
     if os.path.isfile(filename):
         try:
             os.remove(filename)
@@ -171,10 +185,23 @@ def rm_files(filenames):
     return True
 
 
+def _removable_roots():
+    """Trees rm_dir may delete inside: the project and where media actually lives"""
+    roots = [settings.BASE_DIR, getattr(settings, "MEDIA_ROOT", None), getattr(settings, "HLS_DIR", None)]
+    return [os.path.join(os.path.normpath(root), "") for root in roots if root]
+
+
 def rm_dir(directory):
+    """Remove one MediaCMS-owned directory tree.
+
+    Symlinks inside the tree (and the directory itself, when it is one) are unlinked,
+    never followed, so an external archive a "preserve" import points at is untouched.
+    """
+    if os.path.islink(directory):
+        return rm_file(directory)
     if os.path.isdir(directory):
-        # refuse to delete a dir inside project BASE_DIR
-        if directory.startswith(settings.BASE_DIR):
+        # refuse to delete a dir outside the project and the media storage trees
+        if any(os.path.join(os.path.normpath(directory), "").startswith(root) for root in _removable_roots()):
             try:
                 shutil.rmtree(directory)
                 logger.debug("Successfully removed directory - directory=%s", directory)

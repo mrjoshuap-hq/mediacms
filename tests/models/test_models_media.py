@@ -25,6 +25,7 @@ from files.models import (
     VideoChapterData,
     VideoTrimRequest,
 )
+from files.models.utils import media_uid_shard_path
 from files.tests import create_account, create_media, fixture_path
 from files.tests.media_utils import IMAGE, IMAGE_JPG, SMALL_VIDEO
 
@@ -59,9 +60,17 @@ class MediaSaveTests(TestCase):
         cls.user = make_user("save_user")
 
     def test_blank_title_is_derived_from_the_file_name(self):
+        # an upload that is not stored yet still carries the client's file name
+        with open(fixture_path(IMAGE), "rb") as fp:
+            media = Media(user=self.user, media_file=File(fp, name=IMAGE))
+            media._do_not_transcode = True
+            media.save()
+        self.assertEqual(media.title, IMAGE)
+
+    def test_blank_title_of_an_already_stored_file_is_its_opaque_name(self):
         media = create_media(self.user)
-        self.assertTrue(media.title.endswith(IMAGE))
-        self.assertIn(media.uid.hex, media.title)
+        self.assertEqual(media.title, "source.png")
+        self.assertEqual(media.media_file.name, f"original/{media_uid_shard_path(media.uid)}/source.png")
 
     def test_html_is_stripped_from_title_and_description(self):
         media = create_media(self.user, title="<b>Bold</b> <a href='x'>title</a>", description="<p>Hello <script>alert(1)</script>world</p>")
@@ -610,11 +619,12 @@ class MediaPropertiesTests(TestCase):
         VideoChapterData.objects.create(media=self.image, data=chapters)
         self.assertEqual(self.image.chapter_data, chapters)
 
-    def test_video_chapters_folder_is_per_user_and_media(self):
+    def test_video_chapters_folder_is_under_the_sharded_thumbnails_dir(self):
         self.assertEqual(
             self.image.video_chapters_folder,
-            os.path.join(settings.MEDIA_ROOT, f"{settings.THUMBNAIL_UPLOAD_DIR}{self.user.username}/{self.image.friendly_token}_chapters"),
+            os.path.join(settings.MEDIA_ROOT, f"thumbnails/{media_uid_shard_path(self.image.uid)}/chapters"),
         )
+        self.assertNotIn(self.user.username, self.image.video_chapters_folder)
 
 
 class MediaSharingTests(TestCase):

@@ -5,7 +5,7 @@ import { translateString } from '../utils/helpers/';
 import { MaterialIcon } from '../components/_shared/';
 import { listMigrations, controlMigration, deleteMigration } from '../utils/api/migrations.js';
 
-const EXPERIMENTAL_PROVIDERS = ['panopto', 'youtube'];
+const EXPERIMENTAL_PROVIDERS = ['panopto', 'youtube', 'filesystem'];
 
 const STATUS_LABELS = {
     pending: translateString('Draft'),
@@ -24,7 +24,14 @@ function migrationProgress(migration) {
     const discovered = totals.media_discovered || 0;
     const handled = migrated + skipped + failed;
     const percent = discovered ? Math.min(100, Math.round((handled / discovered) * 100)) : 0;
-    return { handled, discovered, failed, percent };
+    return {
+        handled,
+        discovered,
+        failed,
+        percent,
+        pruned: totals.media_pruned || 0,
+        originalGone: totals.media_original_gone || 0,
+    };
 }
 
 function armedSchedule(migration) {
@@ -114,7 +121,10 @@ export class MigrationsPage extends Page {
         const action = primaryAction(migration.status);
         const armed = armedSchedule(migration);
         const connection = migration.connection || {};
-        const source = migration.provider + (connection.partner_id ? ' · partner ' + connection.partner_id : '');
+        const source =
+            'filesystem' === migration.provider
+                ? translateString('Filesystem library') + (connection.mount ? ' · ' + connection.mount : '')
+                : migration.provider + (connection.partner_id ? ' · partner ' + connection.partner_id : '');
 
         return (
             <div className="migrations-row" key={migration.id}>
@@ -146,6 +156,10 @@ export class MigrationsPage extends Page {
                             <span>
                                 {progress.handled} / {progress.discovered} {translateString('items')}
                                 {progress.failed ? ' · ' + progress.failed + ' ' + translateString('errors') : ''}
+                                {progress.pruned ? ' · ' + progress.pruned + ' ' + translateString('pruned') : ''}
+                                {progress.originalGone
+                                    ? ' · ' + progress.originalGone + ' ' + translateString('original gone')
+                                    : ''}
                             </span>
                         </>
                     ) : (
@@ -210,7 +224,7 @@ export class MigrationsPage extends Page {
                             )}
                         </span>
                         <span className="migrations-supported">
-                            {translateString('Kaltura, YouTube and Panopto are supported.')}
+                            {translateString('Kaltura, YouTube, Panopto and filesystem libraries are supported.')}
                         </span>
                     </p>
                 ) : null}

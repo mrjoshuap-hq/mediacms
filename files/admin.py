@@ -73,11 +73,13 @@ from files.methods import (
     confirm_media_reports,
     delete_original_media_file,
     is_mediacms_editor,
+    is_mediacms_manager,
     media_has_original_file,
     record_moderation_action,
     set_media_reviewed,
 )
 from files.models.utils import PREVIEW_PROFILE_NAME
+from files.path_migrate import can_migrate_media_paths
 from rbac.models import RBACGroup
 from users.models import User
 
@@ -557,6 +559,7 @@ class MediaAdmin(OpenOnSiteMixin, TranslateChoiceLabelsMixin, TranslateManyToMan
         [
             "change_owner",
             "delete_original_media_files",
+            "migrate_media_paths",
         ],
         [
             "delete_selected",
@@ -807,7 +810,7 @@ class MediaAdmin(OpenOnSiteMixin, TranslateChoiceLabelsMixin, TranslateManyToMan
                 {
                     "fields": ("reported_times", "report_actions_table"),
                     "classes": ("tab",),
-                    "description": "The log lists reports and other staff actions. Staff actions include review, delete original, refresh metadata, and integrity warning. Clear reports only resets the report counter.",
+                    "description": "The log lists reports and other staff actions. Staff actions include review, delete original, refresh metadata, integrity warning, filesystem sync, and path migrate. Clear reports only resets the report counter.",
                 },
             ),
             (
@@ -1232,6 +1235,9 @@ class MediaAdmin(OpenOnSiteMixin, TranslateChoiceLabelsMixin, TranslateManyToMan
     def has_delete_original_permission(self, request):
         return is_mediacms_editor(request.user)
 
+    def has_migrate_paths_permission(self, request):
+        return is_mediacms_manager(request.user)
+
     def _media_action_queryset(self, request, queryset):
         """Re-resolve selected media when confirming an intermediate action."""
         if "apply" in request.POST:
@@ -1598,6 +1604,45 @@ class MediaAdmin(OpenOnSiteMixin, TranslateChoiceLabelsMixin, TranslateManyToMan
         )
         return TemplateResponse(request, "admin/files/media/delete_original_confirmation.html", context)
 
+    @admin.action(description="Migrate media paths", permissions=["migrate_paths"])
+    def migrate_media_paths(self, request, queryset):
+        from files.tasks import migrate_media_paths_bulk
+
+        queryset = self._media_action_queryset(request, queryset)
+        eligible = []
+        blocked = []
+        for media in queryset:
+            ok, reason = can_migrate_media_paths(media)
+            if ok:
+                eligible.append(media)
+            else:
+                blocked.append({"media": media, "reason": reason})
+
+        if "apply" in request.POST:
+            if not eligible:
+                self.message_user(
+                    request,
+                    translate_string(getattr(request, "LANGUAGE_CODE", None), "No media can be migrated. Change the selection and try again."),
+                    messages.ERROR,
+                )
+            else:
+                migrate_media_paths_bulk.delay([media.friendly_token for media in eligible], getattr(request.user, "pk", None))
+                self.message_user(
+                    request,
+                    admin_text(getattr(request, "LANGUAGE_CODE", None), "Queued path migration for {queued} media item(s); skipped {skipped}.", queued=len(eligible), skipped=len(blocked)),
+                    messages.SUCCESS,
+                )
+                return None
+
+        context = self._intermediate_action_context(
+            request,
+            queryset,
+            "Migrate media paths",
+            "migrate_media_paths",
+            extra={"eligible": eligible, "blocked": blocked, "can_confirm": bool(eligible)},
+        )
+        return TemplateResponse(request, "admin/files/media/migrate_paths_confirmation.html", context)
+
     @admin.action(description="Change owner", permissions=["change"])
     def change_owner(self, request, queryset):
         queryset = self._media_action_queryset(request, queryset)
@@ -1657,6 +1702,7 @@ class MediaAdmin(OpenOnSiteMixin, TranslateChoiceLabelsMixin, TranslateManyToMan
         feature_selected,
         unfeature_selected,
         delete_original_media_files,
+        migrate_media_paths,
         change_owner,
     ]
 

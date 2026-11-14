@@ -9,6 +9,7 @@ This section shows the path from a new server to a working MediaCMS portal.
 3. [First sign-in](first-sign-in.md). Find the administrator password and sign in.
 4. [Concepts](concepts.md). Learn the words that MediaCMS uses for media, states, and roles.
 5. [Update](update.md). Keep MediaCMS current.
+6. [Releases](../releases/index.md). Compare upstream ≤v9 with fork 10 stable and beta before you change lines.
 
 ## Before you start
 

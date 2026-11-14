@@ -8,6 +8,7 @@ import {
     getMigration,
     getServerTime,
     listLtiPlatforms,
+    listFilesystemMounts,
     checkConnection,
     checkSavedConnection,
     controlMigration,
@@ -23,6 +24,7 @@ const PROVIDERS = [
     { id: 'kaltura', label: 'Kaltura', available: true, canImport: true },
     { id: 'panopto', label: 'Panopto', available: true, canImport: true },
     { id: 'youtube', label: 'YouTube', available: true, canImport: true },
+    { id: 'filesystem', label: 'Filesystem library', available: true, canImport: true },
 ];
 
 const PLACEHOLDER_TEXT = {};
@@ -31,6 +33,7 @@ const REQUIRED_CONNECTION_FIELDS = {
     kaltura: ['service_url', 'partner_id', 'app_token_id', 'app_token'],
     panopto: ['service_url', 'client_id', 'client_secret', 'username', 'password'],
     youtube: ['sources'],
+    filesystem: ['mount'],
 };
 
 const CONNECTION_FIELDS = {
@@ -81,6 +84,78 @@ const CONNECTION_FIELDS = {
         },
     ],
 };
+
+const FILESYSTEM_CONNECTION_FIELDS = [
+    {
+        key: 'mount',
+        label: 'Library mount',
+        type: 'mount',
+        help: 'A folder bound under the server import root. Only the mounts listed here can be chosen.',
+    },
+    {
+        key: 'subpath',
+        label: 'Folder inside the mount',
+        type: 'text',
+        placeholder: 'lectures/2024',
+        help: 'Optional. Limit the sync to one folder of the mount. Leave empty for the whole mount.',
+    },
+];
+
+CONNECTION_FIELDS.filesystem = FILESYSTEM_CONNECTION_FIELDS;
+
+const STORAGE_MODES = [
+    {
+        value: 'ingest',
+        label: 'Copy into MediaCMS storage',
+        help: 'Each original is hard-linked (or copied across devices) into MediaCMS storage. The library can be moved or unmounted afterwards.',
+    },
+    {
+        value: 'preserve',
+        label: 'Keep files on external mount',
+        help: 'MediaCMS stores a link to the original. The mount must stay at the same location for as long as the media exists. Encodings are still written to MediaCMS storage.',
+    },
+];
+
+const FILESYSTEM_OPTIONS = [
+    {
+        key: 'fallback_username',
+        label: 'Owner',
+        isText: true,
+        required: true,
+        placeholder: 'username',
+        help: 'Required. Every imported item is given to this existing MediaCMS user. Folder names never become accounts, and nobody is picked for you.',
+    },
+    {
+        key: 'storage_mode',
+        label: 'Storage mode',
+        isChoice: true,
+        choices: STORAGE_MODES,
+    },
+    {
+        key: 'categories_from_folders',
+        label: 'Create categories from folders',
+        help: 'Each folder that holds media becomes a category, and its media is added to it.',
+    },
+    {
+        key: 'import_captions',
+        label: 'Import captions',
+        help: 'Sidecar .vtt and .srt files beside a media file (name.vtt, name.en.srt) become subtitles.',
+    },
+    {
+        key: 'ignore_patterns',
+        label: 'Ignore patterns',
+        isTextarea: true,
+        placeholder: '*.tmp, drafts/*',
+        help: 'One glob per line (or comma separated), matched against file names and mount-relative paths. Hidden files and common system folders are always skipped.',
+    },
+    {
+        key: 'max_items',
+        label: 'Maximum items per run',
+        isNumber: true,
+        placeholder: 'No limit',
+        help: 'Optional. Stop after this many items, for a trial run.',
+    },
+];
 
 const YOUTUBE_OPTIONS = [
     {
@@ -295,6 +370,19 @@ const YOUTUBE_DEFAULT_OPTIONS = Object.assign(
     SCHEDULE_DEFAULTS
 );
 
+const FILESYSTEM_DEFAULT_OPTIONS = Object.assign(
+    {
+        // no default owner: the form refuses to save until someone is chosen
+        fallback_username: '',
+        storage_mode: 'ingest',
+        categories_from_folders: true,
+        import_captions: true,
+        ignore_patterns: '',
+        max_items: '',
+    },
+    SCHEDULE_DEFAULTS
+);
+
 const PANOPTO_OPTIONS = [
     {
         key: 'migrate_all_users',
@@ -369,6 +457,9 @@ const PANOPTO_DEFAULT_OPTIONS = Object.assign(
 );
 
 function defaultsFor(provider) {
+    if ('filesystem' === provider) {
+        return FILESYSTEM_DEFAULT_OPTIONS;
+    }
     if ('youtube' === provider) {
         return YOUTUBE_DEFAULT_OPTIONS;
     }
@@ -379,6 +470,9 @@ function defaultsFor(provider) {
 }
 
 function optionsFor(provider) {
+    if ('filesystem' === provider) {
+        return FILESYSTEM_OPTIONS;
+    }
     if ('youtube' === provider) {
         return YOUTUBE_OPTIONS;
     }
@@ -410,6 +504,22 @@ function optionIsShown(option, options) {
     }
     const conditions = [].concat(option.shownWhen);
     return conditions.every((condition) => !!options[condition.key] === condition.is);
+}
+
+// DRF answers {connection: ["msg"]} or {options: "msg"}; the form shows each under its own section
+function fieldErrorsFrom(data) {
+    const errors = {};
+    ['connection', 'options'].forEach((key) => {
+        const value = data && data[key];
+        if (value) {
+            errors[key] = Array.isArray(value)
+                ? value.join(' ')
+                : 'string' === typeof value
+                  ? value
+                  : JSON.stringify(value);
+        }
+    });
+    return errors;
 }
 
 function migrationIdFromPath() {
@@ -445,6 +555,9 @@ export class MigrationEditPage extends Page {
             categoriesError: null,
             categories: null,
             serverTime: null,
+            mounts: null,
+            mountsError: null,
+            fieldErrors: {},
         };
 
         this.onCheckClick = this.onCheckClick.bind(this);
@@ -464,6 +577,10 @@ export class MigrationEditPage extends Page {
             .then((response) => this.safeSetState({ ltiPlatforms: response.data || [] }))
             .catch(() => {});
 
+        if ('filesystem' === this.state.provider) {
+            this.loadMounts();
+        }
+
         if (this.state.id) {
             getMigration(this.state.id)
                 .then((response) => {
@@ -481,6 +598,9 @@ export class MigrationEditPage extends Page {
                         () => {
                             if (picksCategories(this.state.provider)) {
                                 this.onLoadCategoriesClick();
+                            }
+                            if ('filesystem' === this.state.provider && null === this.state.mounts) {
+                                this.loadMounts();
                             }
                         }
                     );
@@ -505,6 +625,19 @@ export class MigrationEditPage extends Page {
         if (!this.unmounted) {
             this.setState(state, callback);
         }
+    }
+
+    loadMounts() {
+        listFilesystemMounts()
+            .then((response) =>
+                this.safeSetState({ mounts: (response.data && response.data.mounts) || [], mountsError: null })
+            )
+            .catch(() =>
+                this.safeSetState({
+                    mounts: [],
+                    mountsError: translateString('Could not load the library mounts'),
+                })
+            );
     }
 
     setConnectionValue(key, value) {
@@ -664,13 +797,28 @@ export class MigrationEditPage extends Page {
 
     save() {
         const { id } = this.state;
-        this.setState({ saving: true, error: null });
+        this.setState({ saving: true, error: null, fieldErrors: {} });
         const request = id ? updateMigration(id, this.payload()) : createMigration(this.payload());
         return request.catch((error) => {
             const data = error.response && error.response.data;
+            const fieldErrors = fieldErrorsFrom(data);
+            const others = Object.assign({}, data || {});
+            delete others.connection;
+            delete others.options;
+            const hasOthers = Object.keys(others).length > 0;
             this.safeSetState({
                 saving: false,
-                error: data ? JSON.stringify(data) : translateString('Could not save'),
+                fieldErrors,
+                activeTab: fieldErrors.connection
+                    ? 'connection'
+                    : fieldErrors.options
+                      ? 'options'
+                      : this.state.activeTab,
+                error: !data
+                    ? translateString('Could not save')
+                    : hasOthers || (!fieldErrors.connection && !fieldErrors.options)
+                      ? JSON.stringify(hasOthers ? others : data)
+                      : null,
             });
             return Promise.reject(error);
         });
@@ -768,6 +916,14 @@ export class MigrationEditPage extends Page {
     }
 
     saveProblem() {
+        if ('filesystem' === this.state.provider) {
+            if (!String(this.state.connection.mount || '').trim()) {
+                return translateString('Choose the library mount to sync.');
+            }
+            if (!String(this.state.options.fallback_username || '').trim()) {
+                return translateString('Choose the owner of the imported media.');
+            }
+        }
         if (picksCategories(this.state.provider) && !this.selectedCategoryIds().length) {
             return translateString('Pick at least one category to migrate.');
         }
@@ -885,6 +1041,73 @@ export class MigrationEditPage extends Page {
         );
     }
 
+    renderMountSelect(field) {
+        const mounts = this.state.mounts;
+        const selected = this.state.connection[field.key] || '';
+        const known = (mounts || []).some((mount) => mount.name === selected);
+
+        return (
+            <>
+                <select
+                    value={selected}
+                    required
+                    aria-required="true"
+                    disabled={null === mounts}
+                    onChange={(e) => this.setConnectionValue(field.key, e.target.value)}
+                >
+                    <option value="">
+                        {null === mounts
+                            ? translateString('Loading') + '\u2026'
+                            : translateString('Choose a library mount')}
+                    </option>
+                    {selected && !known ? <option value={selected}>{selected}</option> : null}
+                    {(mounts || []).map((mount) => (
+                        <option key={mount.name} value={mount.name} disabled={false === mount.readable}>
+                            {mount.name +
+                                (false === mount.readable ? ' (' + translateString('not readable') + ')' : '')}
+                        </option>
+                    ))}
+                </select>
+                {this.state.mountsError ? (
+                    <span className="migrations-check migrations-check--error">{this.state.mountsError}</span>
+                ) : null}
+                {mounts && !mounts.length && !this.state.mountsError ? (
+                    <span className="migration-edit-help">
+                        {translateString(
+                            'No library is mounted. Bind a directory under the import root of the web and worker containers first.'
+                        )}
+                    </span>
+                ) : null}
+                {field.help ? <span className="migration-edit-help">{translateString(field.help)}</span> : null}
+            </>
+        );
+    }
+
+    renderChoice(option) {
+        const current = this.state.options[option.key];
+
+        return (
+            <div className="migration-edit-nested" role="radiogroup" aria-label={translateString(option.label)}>
+                <span>{translateString(option.label)}</span>
+                {option.choices.map((choice) => (
+                    <label key={choice.value}>
+                        <input
+                            type="radio"
+                            name={option.key}
+                            value={choice.value}
+                            checked={current === choice.value}
+                            onChange={() => this.setOptionValue(option.key, choice.value)}
+                        />
+                        <span className="migration-edit-option-text">
+                            {translateString(choice.label)}
+                            <span className="migration-edit-help">{translateString(choice.help)}</span>
+                        </span>
+                    </label>
+                ))}
+            </div>
+        );
+    }
+
     renderTotals() {
         const result = this.state.checkResult;
         if (!result || !result.ok) {
@@ -894,19 +1117,24 @@ export class MigrationEditPage extends Page {
         const rows =
             'youtube' === this.state.provider
                 ? [['Media', stats.entries]]
-                : 'panopto' === this.state.provider
+                : 'filesystem' === this.state.provider
                   ? [
                         ['Media', stats.entries],
                         ['Folders', stats.folders],
                     ]
-                  : [
-                        ['Users', stats.users],
-                        ['Groups', stats.groups],
-                        ['Media', stats.entries],
-                        ['Categories', stats.categories],
-                        ['Channels', stats.channels],
-                        ['Playlists', stats.playlists],
-                    ];
+                  : 'panopto' === this.state.provider
+                    ? [
+                          ['Media', stats.entries],
+                          ['Folders', stats.folders],
+                      ]
+                    : [
+                          ['Users', stats.users],
+                          ['Groups', stats.groups],
+                          ['Media', stats.entries],
+                          ['Categories', stats.categories],
+                          ['Channels', stats.channels],
+                          ['Playlists', stats.playlists],
+                      ];
 
         return (
             <div className="migration-edit-totals">
@@ -1293,7 +1521,17 @@ export class MigrationEditPage extends Page {
                                     </span>
                                 </p>
                             ) : null}
-                            <p className="migration-edit-help">{translateString('Credentials are stored encrypted')}</p>
+                            {'filesystem' === provider ? (
+                                <p className="migration-edit-help">
+                                    {translateString(
+                                        'Syncs a library that is already mounted on the server. Nothing outside the import root is read, and the library is never published. Run the migration again to catch up: items already imported are skipped, new files are imported, and media whose file is gone from the mount is removed only when it has no playable encodings.'
+                                    )}
+                                </p>
+                            ) : (
+                                <p className="migration-edit-help">
+                                    {translateString('Credentials are stored encrypted')}
+                                </p>
+                            )}
                             <div className="migration-edit-connection">
                                 {fields.map((field) => (
                                     <label
@@ -1301,7 +1539,9 @@ export class MigrationEditPage extends Page {
                                         className={field.wide ? 'migration-edit-field-wide' : undefined}
                                     >
                                         <span>{translateString(field.label)}</span>
-                                        {'textarea' === field.type ? (
+                                        {'mount' === field.type ? (
+                                            this.renderMountSelect(field)
+                                        ) : 'textarea' === field.type ? (
                                             <textarea
                                                 rows={field.key === 'cookies' ? 3 : 4}
                                                 value={connection[field.key] || ''}
@@ -1313,6 +1553,9 @@ export class MigrationEditPage extends Page {
                                         ) : (
                                             <input
                                                 type={field.type}
+                                                placeholder={
+                                                    field.placeholder ? translateString(field.placeholder) : undefined
+                                                }
                                                 value={connection[field.key] || ''}
                                                 onChange={(e) => this.setConnectionValue(field.key, e.target.value)}
                                             />
@@ -1323,6 +1566,12 @@ export class MigrationEditPage extends Page {
                                     </label>
                                 ))}
                             </div>
+
+                            {this.state.fieldErrors.connection ? (
+                                <p className="migrations-error" role="alert" data-error-for="connection">
+                                    {this.state.fieldErrors.connection}
+                                </p>
+                            ) : null}
 
                             <div className="migration-edit-check">
                                 <button onClick={this.onCheckClick} disabled={!canTest}>
@@ -1340,13 +1589,59 @@ export class MigrationEditPage extends Page {
                         </div>
 
                         <div hidden={'options' !== this.state.activeTab}>
+                            {this.state.fieldErrors.options ? (
+                                <p className="migrations-error" role="alert" data-error-for="options">
+                                    {this.state.fieldErrors.options}
+                                </p>
+                            ) : null}
                             <div className="migration-edit-options">
                                 {optionsFor(provider)
                                     .filter((option) => optionIsShown(option, options))
                                     .filter((option) => !option.isSelect || this.state.ltiPlatforms.length)
                                     .map((option) => (
                                         <React.Fragment key={option.key}>
-                                            {option.isSelect ? (
+                                            {option.isChoice ? (
+                                                this.renderChoice(option)
+                                            ) : option.isTextarea || option.isNumber ? (
+                                                <label className="migration-edit-nested">
+                                                    <span>{translateString(option.label)}</span>
+                                                    {option.isTextarea ? (
+                                                        <textarea
+                                                            rows={3}
+                                                            value={options[option.key] || ''}
+                                                            placeholder={
+                                                                option.placeholder
+                                                                    ? translateString(option.placeholder)
+                                                                    : undefined
+                                                            }
+                                                            onChange={(e) =>
+                                                                this.setOptionValue(option.key, e.target.value)
+                                                            }
+                                                        />
+                                                    ) : (
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            value={
+                                                                null == options[option.key] ? '' : options[option.key]
+                                                            }
+                                                            placeholder={
+                                                                option.placeholder
+                                                                    ? translateString(option.placeholder)
+                                                                    : undefined
+                                                            }
+                                                            onChange={(e) =>
+                                                                this.setOptionValue(option.key, e.target.value)
+                                                            }
+                                                        />
+                                                    )}
+                                                    {option.help ? (
+                                                        <span className="migration-edit-help">
+                                                            {translateString(option.help)}
+                                                        </span>
+                                                    ) : null}
+                                                </label>
+                                            ) : option.isSelect ? (
                                                 <label className="migration-edit-nested">
                                                     <span>{translateString(option.label)}</span>
                                                     <select
@@ -1370,9 +1665,15 @@ export class MigrationEditPage extends Page {
                                                 </label>
                                             ) : option.isText ? (
                                                 <label className="migration-edit-nested">
-                                                    <span>{translateString(option.label)}</span>
+                                                    <span>
+                                                        {translateString(option.label)}
+                                                        {option.required ? ' *' : ''}
+                                                    </span>
                                                     <input
                                                         type="text"
+                                                        required={!!option.required}
+                                                        aria-required={option.required ? 'true' : undefined}
+                                                        autoComplete={option.required ? 'off' : undefined}
                                                         value={options[option.key] || ''}
                                                         placeholder={
                                                             option.placeholder

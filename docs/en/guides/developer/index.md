@@ -37,7 +37,7 @@ Read [Architecture](architecture.md) for the full stack.
 
 1. Install [Docker](https://docs.docker.com/get-docker/) and Docker Compose.
 2. Clone the repository.
-3. Read `AGENTS.md` in the repository root. It lists the rules for code style and commits.
+3. Read `AGENTS.md` in the repository root. It lists the rules for code style and commits. Agent skills for common workflows live under `skills/` (see the Skill Index in `AGENTS.md`).
 4. Read the [Code of Conduct](https://github.com/mediacms-io/mediacms/blob/main/CODE_OF_CONDUCT.md).
 
 ## Rules for every change

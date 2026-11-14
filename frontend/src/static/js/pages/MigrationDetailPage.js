@@ -271,6 +271,9 @@ export class MigrationDetailPage extends Page {
 
         const totals = progress.totals || {};
         const media = counts(totals, 'media');
+        const filesystem = 'filesystem' === migration.provider;
+        const pruned = totals.media_pruned || 0;
+        const originalGone = totals.media_original_gone || 0;
 
         return (
             <div className="migration-detail-page">
@@ -297,7 +300,9 @@ export class MigrationDetailPage extends Page {
                     <div>
                         <p>{translateString('Skipped')}</p>
                         <strong>{media.skipped}</strong>
-                        <span>{translateString('already in MediaCMS')}</span>
+                        <span>
+                            {translateString(filesystem ? 'unchanged, not imported again' : 'already in MediaCMS')}
+                        </span>
                     </div>
                     <div>
                         <p>{translateString('Errors')}</p>
@@ -312,6 +317,31 @@ export class MigrationDetailPage extends Page {
                         </span>
                     </div>
                 </div>
+
+                {filesystem ? (
+                    <>
+                        <div className="migration-detail-tiles">
+                            <div>
+                                <p>{translateString('Pruned')}</p>
+                                <strong>{pruned}</strong>
+                                <span>{translateString('file gone, no playable encodings, media deleted')}</span>
+                            </div>
+                            <div>
+                                <p>{translateString('Original gone')}</p>
+                                <strong>{originalGone}</strong>
+                                <span>{translateString('file gone, media kept for its encodings')}</span>
+                            </div>
+                        </div>
+                        <p className="migration-detail-note">
+                            {translateString(
+                                'Run again syncs the library with the mount: new files are imported, files already imported are skipped without creating duplicates, and a media item deleted in MediaCMS is imported again if its file is still on the mount.'
+                            )}{' '}
+                            {translateString(
+                                'When a file disappears from the mount, its media is deleted only if it has no playable encodings. Media with encodings is kept and stays playable.'
+                            )}
+                        </p>
+                    </>
+                ) : null}
 
                 <p className="migration-detail-section">{translateString('Progress by type')}</p>
                 <div className="migration-detail-progress">

@@ -64,6 +64,12 @@ For the full stack, see [Architecture](architecture.md).
 4. Run the command that copies the new key to all language files:
 
     ```bash
+    make languages-build
+    ```
+
+    Equivalent:
+
+    ```bash
     docker compose -f docker-compose-dev.yaml exec -T web python manage.py process_translations
     ```
 
@@ -87,7 +93,7 @@ For the full stack, see [Architecture](architecture.md).
 | Where you added the text | What you must do |
 |--------------------------|------------------|
 | Django template | Reload the page. The template does not need a frontend rebuild. |
-| React file | Rebuild the frontend with `make build-frontend`. |
+| React file | Rebuild the frontend with `make frontend-build`. |
 | Python file only (`en.py` or a language file) | Wait for Django to reload. If it does not, restart `web`: `docker compose -f docker-compose-dev.yaml restart web`. |
 
 !!! note

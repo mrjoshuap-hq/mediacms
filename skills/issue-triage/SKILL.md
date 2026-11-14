@@ -1,0 +1,21 @@
+---
+name: issue-triage
+description: Triage MediaCMS GitHub or Gitea issues and draft minimal-impact fix plans. Use when checking issue applicability, planning a fix from an issue/PR URL, or reviving a closed PR against current mediacms-next or main.
+---
+
+# Issue triage
+
+## Instructions
+
+1. Confirm the issue still applies on the **current** target branch (`mediacms-next` or `main`) by reading code and reproducing or tracing the path — do not trust old comments alone.
+2. Prefer **minimal-impact** fixes (templates, config, tests, small logic). Avoid model/schema migrations unless required (see `AGENTS.md` Change Impact Policy).
+3. Produce a short plan: root cause, files to touch, test plan. Wait for implement approval when the user is in plan mode or asked for a plan only.
+4. If behavior is intentionally absent, consider `@unimplemented` only for stubbed tests — see skill `test-ci`.
+5. Do not commit or open PRs unless the user asks.
+6. When fixing, add or update tests under the matching `tests/` area when practical.
+
+## Additional resources
+
+- Root `AGENTS.md` (change impact + hard rules)
+- Skill `test-ci`, `rbac-permissions`, `media-pipeline`, or `admin-portal` as the domain dictates
+- `tests/` layout mirroring apps (`api/`, `models/`, `rbac/`, `pipeline/`, …)

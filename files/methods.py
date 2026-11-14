@@ -949,9 +949,11 @@ def copy_video(original_media, copy_encodings=True, title_suffix="(Trimmed)"):
         if original_media.hls_file and os.path.exists(original_media.hls_file):
             p = os.path.dirname(original_media.hls_file)
             if os.path.exists(p):
-                new_hls_file = original_media.hls_file.replace(original_media.uid.hex, new_media.uid.hex)
+                # the copy gets its own sharded tree (a plain uid replace would keep the
+                # original's shard directories)
+                new_p = os.path.join(settings.HLS_DIR, models.media_uid_shard_path(new_media.uid))
+                new_hls_file = os.path.join(new_p, os.path.relpath(original_media.hls_file, p))
                 models.Media.objects.filter(id=new_media.id).update(hls_file=new_hls_file)
-                new_p = p.replace(original_media.uid.hex, new_media.uid.hex)
 
                 if not os.path.exists(new_p):
                     os.makedirs(new_p, exist_ok=True)

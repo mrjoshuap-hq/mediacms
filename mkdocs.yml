@@ -95,6 +95,14 @@ extra:
 
 nav:
     - Home: index.md
+    - Releases:
+          - releases/index.md
+          - Compare lines: releases/compare.md
+          - Features: releases/features.md
+          - Fixes and known issues: releases/fixes.md
+          - Models and migrations: releases/migrations.md
+          - Frontend: releases/frontend.md
+          - Upgrade tips: releases/upgrade-tips.md
     - Getting started:
           - getting-started/index.md
           - Install with Docker: getting-started/install.md

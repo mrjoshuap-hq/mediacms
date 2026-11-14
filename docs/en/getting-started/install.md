@@ -21,14 +21,20 @@ Use this page to install MediaCMS on one server with Docker Compose.
     cd mediacms
     ```
 
-3. Start the containers.
+3. Build the local MediaCMS image (Compose defaults to `mediacms:local`, not Docker Hub).
+
+    ```bash
+    make docker-build
+    ```
+
+4. Start the containers.
 
     ```bash
     docker compose up
     ```
 
-4. Wait until the output stops. Docker downloads the images and starts all containers.
-5. Open `http://localhost` in a browser. On a remote server, open `http://` followed by the server IP address.
+5. Wait until the output stops. Docker starts all containers.
+6. Open `http://localhost` in a browser. On a remote server, open `http://` followed by the server IP address.
 
 ## Find the administrator password
 
@@ -46,9 +52,31 @@ To set your own password, remove the comment mark from `ADMIN_PASSWORD` in `dock
 
 See [First sign-in](first-sign-in.md) to use the password.
 
+## Local images vs registry images
+
+Compose defaults to images built on this machine:
+
+| Variable | Default | Used by |
+|----------|---------|---------|
+| `MEDIACMS_IMAGE` | `mediacms:local` | `docker-compose.yaml` and variants |
+| `MEDIACMS_FULL_IMAGE` | `mediacms:full` | `docker-compose.full.yaml` (Whisper worker) |
+| `MEDIACMS_DEV_IMAGE` | `mediacms-dev:latest` | `docker-compose-dev.yaml` |
+
+Build them with `make docker-build` (and `make docker-build-full` for Whisper).
+
+!!! note "arm64 / Apple Silicon builds"
+    A local Dockerfile build may warn about `mediacms/mediacms:7.2.0` (`InvalidBaseImagePlatform`). FFmpeg is copied from that pinned **amd64** donor; Bento4 is still an **x86_64** zip. See [Fixes and known issues](../releases/fixes.md#amd64-media-tools-in-the-image).
+
 ## Fork beta and stable images (GHCR)
 
-This fork publishes images to GitHub Container Registry. Change the Compose `image:` lines to test beta or stable builds.
+This fork publishes images to GitHub Container Registry. Override the Compose variables instead of editing every `image:` line:
+
+```bash
+export MEDIACMS_IMAGE=ghcr.io/mrjoshuap/mediacms:beta
+export MEDIACMS_FULL_IMAGE=ghcr.io/mrjoshuap/mediacms-full:beta
+docker compose pull
+docker compose up
+```
 
 | Pull tag | Meaning |
 |----------|---------|
@@ -61,29 +89,17 @@ This fork publishes images to GitHub Container Registry. Change the Compose `ima
 | `ghcr.io/mrjoshuap/mediacms:upgrade-audit-beta` | Base image alias for beta upgrade drills |
 | `ghcr.io/mrjoshuap/mediacms:upgrade-audit` | Base image alias for stable upgrade drills |
 
-Example Compose override for beta:
-
-```yaml
-services:
-  web:
-    image: ghcr.io/mrjoshuap/mediacms:beta
-  celery_worker:
-    image: ghcr.io/mrjoshuap/mediacms-full:beta
-  migrations:
-    image: ghcr.io/mrjoshuap/mediacms:beta
-```
-
 Beta builds publish a GitHub **pre-release** on every push to `mediacms-next`. Stable releases publish only when a stamp tag `v10.0.0.YYYYMMDD` (or `v10.0.0.YYYYMMDD.N` for a same-day emergency) is pushed from `main`. The product base version lives in `version/FORK_VERSION`.
 
-Upstream Docker Hub images remain `mediacms/mediacms` and `mediacms/mediacms:full`.
+Upstream Docker Hub images remain available as `MEDIACMS_IMAGE=mediacms/mediacms:latest` if you want them.
 
 ## Enable Whisper transcription (optional)
 
-Whisper creates subtitles automatically. It works only in the Docker installation. It needs a **full** image (`mediacms/mediacms:full` upstream, or `ghcr.io/mrjoshuap/mediacms-full:beta` / `:stable` on this fork).
+Whisper creates subtitles automatically. It works only in the Docker installation. It needs a **full** image (`make docker-build-full` → `mediacms:full`, or set `MEDIACMS_FULL_IMAGE` to a GHCR/upstream full tag).
 
 1. Use one of these methods.
-    - Run `docker compose -f docker-compose.yaml -f docker-compose.full.yaml up`.
-    - Edit `docker-compose.yaml`. Set the image of the `celery_worker` service to the full image tag you use.
+    - Run `make docker-build-full`, then `docker compose -f docker-compose.yaml -f docker-compose.full.yaml up`.
+    - Set `MEDIACMS_FULL_IMAGE` to a registry full tag and use the same Compose overlay.
 2. Open `deploy/docker/local_settings.py`.
 3. Set `USE_WHISPER_TRANSCRIBE = True`.
 4. Restart the services.
@@ -97,8 +113,31 @@ Whisper creates subtitles automatically. It works only in the Docker installatio
 MediaCMS uses nginx to protect media files. nginx asks Django if a user may open a file. If you use your own nginx configuration instead of `deploy/docker/nginx_http_only.conf`, copy these blocks from that file:
 
 - `location = /_media_auth` and `location ~ ^/media/(encoded|hls)/(.*)$`. They check access to encoded and HLS files.
-- `location ~ ^/media/original/(.*)$`. It checks access to original files. It sends unknown file types as downloads.
+- `location ~ ^/media/original/(.*)$`. It checks access to original files. It sends unknown file types as downloads. The same block serves the sharded `original/<aa>/<bb>/<uid>/source.<ext>` paths and the older `original/user/…` paths.
+- `location ~ ^/media/(thumbnails|categories)/(.*)$` and `location ~ ^/media/subtitles/(.*)$`. They check access to thumbnails, category images, and caption files. Without them, new uploads (which store these files under `thumbnails/`, `categories/`, and `subtitles/`) are served without an access check.
 - `location ^~ /_protected_pdf/`. Django uses it to serve PDF files. Without it, PDF files do not show.
+
+## Mount a media library for filesystem sync (optional)
+
+A **Filesystem library** migration reads media from `FILESYSTEM_IMPORT_ROOT` (default `/external-media_files`). The image creates this directory. Mount your library under it.
+
+1. Add a bind mount to the `web` and `celery_worker` services. Use one child directory for each library.
+
+    ```yaml
+    volumes:
+      - /srv/archive-a:/external-media_files/archive-a:ro
+    ```
+
+2. Restart the containers.
+
+    ```bash
+    docker compose restart web celery_worker celery_beat
+    ```
+
+3. Open `/migrations/new/filesystem` and select the mount. See [Content migration](../guides/admin/content-migration.md#filesystem-library).
+
+!!! warning
+    Do not add an nginx `location` or `alias` for `/external-media_files`. The library is scanned only. Visitors reach each file through the opaque `/media/original/<aa>/<bb>/<uid>/source.<ext>` path, which nginx checks with `/_media_auth`.
 
 ## MediaCMS Architecture
 

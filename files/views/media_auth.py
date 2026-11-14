@@ -24,9 +24,16 @@ from ..models import Category, Media, Subtitle
 UID_RE = re.compile(r"^[0-9a-f]{32}$")
 FILENAME_UID_RE = re.compile(r"^([0-9a-f]{32})(?:[._]|$)")
 
+# Legacy layouts (pre-sharding), still authorized for as long as such files exist
 THUMBNAILS_PREFIX = "original/thumbnails/"
 SUBTITLES_PREFIX = "original/subtitles/"
 CATEGORIES_PREFIX = "original/categories/"
+
+# Sharded layout: <kind>/<aa>/<bb>/<uid.hex>/<file>; categories/<aa>/<bb>/<category_uid>.<ext>
+SHARDED_KINDS = ("original", "encoded", "hls", "thumbnails", "subtitles")
+SHARD_RE = re.compile(r"^[0-9a-f]{2}$")
+SHARDED_CATEGORIES_PREFIX = "categories/"
+CATEGORY_PREFIXES = (CATEGORIES_PREFIX, SHARDED_CATEGORIES_PREFIX)
 
 THUMBNAIL_FIELDS = ("uploaded_thumbnail", "uploaded_poster", "thumbnail", "poster", "sprites")
 
@@ -50,6 +57,21 @@ def _relpath(path):
     if path.startswith(media_url):
         return path[len(media_url) :] or None
     return None
+
+
+def _sharded_uid(parts):
+    """(is_sharded, uid): the uid a sharded path names, read only from its fixed segment.
+
+    A path is sharded when it is <kind>/<aa>/<bb>/<something>/<file>. The uid is then the
+    fourth segment and must be a full uid whose first four hex digits are the two shards;
+    anything else shaped like that is denied rather than guessed at from other segments.
+    """
+    if len(parts) < 5 or parts[0] not in SHARDED_KINDS or not (SHARD_RE.match(parts[1]) and SHARD_RE.match(parts[2])):
+        return False, None
+    uid = parts[3]
+    if UID_RE.match(uid) and uid[0:2] == parts[1] and uid[2:4] == parts[2]:
+        return True, uid
+    return True, None
 
 
 def _uid_at_its_position(relpath):
@@ -92,12 +114,20 @@ def _uid_by_stored_path(relpath):
 def _resolve_uid(relpath):
     """The one media uid a protected path resolves to, or None.
 
-    Subtitles carry no uid, so they are resolved by their stored path or not at all. A
+    Sharded paths (<kind>/<aa>/<bb>/<uid>/...) state their uid at a fixed segment and the
+    system alone chooses their names. The legacy families below stay readable: subtitles
+    carry no uid, so they are resolved by their stored path or not at all. A
     thumbnail may be an upload with an arbitrary name or a generated file named after its
     own media, so the path is tried first and the name second; a generated name begins
     with its own media's uid, so neither route can name another media. Everything else
     states its uid positionally.
     """
+    sharded, uid = _sharded_uid(relpath.split("/"))
+    if sharded:
+        return uid
+    if relpath.split("/", 1)[0] in ("thumbnails", "subtitles"):
+        # new-layout kinds that are not a valid sharded path name no media
+        return None
     if relpath.startswith(SUBTITLES_PREFIX):
         return _uid_by_stored_path(relpath)
     if relpath.startswith(THUMBNAILS_PREFIX):
@@ -233,7 +263,7 @@ def media_auth(request):
 
     user = request.user
 
-    if relpath.startswith(CATEGORIES_PREFIX):
+    if relpath.startswith(CATEGORY_PREFIXES):
         allowed = _cached_decision(f"category:{relpath}", user, lambda: _decide_category(relpath, user))
         return HttpResponse(status=204 if allowed else 403)
 

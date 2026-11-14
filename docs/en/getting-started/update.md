@@ -19,10 +19,18 @@ Use this page to update a MediaCMS Docker installation to the latest image.
     cd /path/to/mediacms/installation
     ```
 
-3. Download the latest image.
+3. Refresh the app image.
+
+    Local build (Compose default `mediacms:local`):
 
     ```bash
-    docker pull mediacms/mediacms
+    make docker-build
+    ```
+
+    Or pull a registry tag you set with `MEDIACMS_IMAGE` (for example GHCR `:stable` / `:beta`):
+
+    ```bash
+    docker compose pull
     ```
 
 4. Stop the containers.
@@ -38,7 +46,7 @@ Use this page to update a MediaCMS Docker installation to the latest image.
     ```
 
 6. Read the `migrations` container output. Check that the migrations finish without errors.
-7. Read the **Upgrade impact** table on [What's new](../reference/whats-new.md). Run any listed frontend build, language rebuild, or extra restart steps.
+7. Read [Upgrade tips](../releases/upgrade-tips.md) and the **Upgrade impact** table on [What's new](../reference/whats-new.md). Run any listed frontend build, language rebuild, or extra restart steps.
 8. Open the portal. Check that you can sign in.
 
 ## Check your custom nginx configuration

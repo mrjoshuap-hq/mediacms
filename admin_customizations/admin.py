@@ -59,7 +59,15 @@ from users.models import Channel, User
 
 # Report-related moderator audit events shown on the dashboard (excludes user "report"
 # submissions, media approval reviews, and filesystem integrity audits).
-_REPORT_AUDIT_EXCLUDED = ("media_reviewed", "metadata_refresh", "integrity_warning")
+_REPORT_AUDIT_EXCLUDED = (
+    "media_reviewed",
+    "metadata_refresh",
+    "integrity_warning",
+    "fs_imported",
+    "fs_original_gone",
+    "fs_pruned",
+    "path_migrated",
+)
 REPORT_AUDIT_ACTIONS = tuple(name for name, _label in MODERATION_MEDIA_ACTIONS if name not in _REPORT_AUDIT_EXCLUDED)
 REPORT_AUDIT_ACTION_LABELS = dict(MODERATION_MEDIA_ACTIONS)
 

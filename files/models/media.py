@@ -31,8 +31,13 @@ from .utils import (
     MEDIA_STATES,
     MEDIA_TYPES_SUPPORTED,
     PREVIEW_PROFILE_NAME,
+    media_listing_thumbnail_file_path,
+    media_poster_file_path,
+    media_sprites_file_path,
+    media_uid_dir,
+    media_uploaded_listing_thumbnail_file_path,
+    media_uploaded_poster_file_path,
     original_media_file_path,
-    original_thumbnail_file_path,
 )
 from .video_data import VideoTrimRequest
 
@@ -155,7 +160,7 @@ class Media(models.Model):
     )
 
     poster = ProcessedImageField(
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_poster_file_path,
         processors=[ResizeToFit(width=720, height=None)],
         format="JPEG",
         options={"quality": 95},
@@ -185,7 +190,7 @@ class Media(models.Model):
     )
 
     sprites = models.FileField(
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_sprites_file_path,
         blank=True,
         max_length=500,
         help_text="sprites file, only for videos, displayed on the video player",
@@ -204,7 +209,7 @@ class Media(models.Model):
     title = models.CharField(max_length=100, help_text="media title", blank=True, db_index=True)
 
     thumbnail = ProcessedImageField(
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_listing_thumbnail_file_path,
         processors=[ResizeToFit(width=344, height=None)],
         format="JPEG",
         options={"quality": 95},
@@ -218,7 +223,7 @@ class Media(models.Model):
     uid = models.UUIDField(unique=True, default=uuid.uuid4, help_text="A unique identifier for the Media")
 
     uploaded_thumbnail = ProcessedImageField(
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_uploaded_listing_thumbnail_file_path,
         processors=[ResizeToFit(width=344, height=None)],
         format="JPEG",
         options={"quality": 85},
@@ -230,7 +235,7 @@ class Media(models.Model):
     uploaded_poster = ProcessedImageField(
         verbose_name="Upload image",
         help_text="This image will characterize the media",
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_uploaded_poster_file_path,
         processors=[ResizeToFit(width=720, height=None)],
         format="JPEG",
         options={"quality": 85},
@@ -1054,7 +1059,13 @@ class Media(models.Model):
 
     @property
     def video_chapters_folder(self):
-        custom_folder = f"{settings.THUMBNAIL_UPLOAD_DIR}{self.user.username}/{self.friendly_token}_chapters"
+        """thumbnails/aa/bb/<uid>/chapters under MEDIA_ROOT"""
+        return os.path.join(media_uid_dir(settings.THUMBNAIL_UPLOAD_DIR, self.uid), "chapters")
+
+    @property
+    def legacy_video_chapters_folder(self):
+        """Pre-sharding chapters folder, only read to clean up media that still has it"""
+        custom_folder = f"{settings.MEDIA_UPLOAD_DIR}thumbnails/{self.user.username}/{self.friendly_token}_chapters"
         return os.path.join(settings.MEDIA_ROOT, custom_folder)
 
     @property
@@ -1218,8 +1229,15 @@ def media_file_delete(sender, instance, **kwargs):
         p = os.path.dirname(instance.hls_file)
         helpers.rm_dir(p)
 
-    # remove extra zombie thumbnails
-    if instance.thumbnail:
+    # Sharded media own one directory per kind, removed whole (symlinks inside are
+    # unlinked, never followed) without listing any kind root.
+    uid_dirs = [media_uid_dir(kind, instance.uid) for kind in (settings.MEDIA_UPLOAD_DIR, settings.MEDIA_ENCODING_DIR, settings.THUMBNAIL_UPLOAD_DIR, settings.SUBTITLES_UPLOAD_DIR)]
+    uid_dirs.append(media_uid_dir("hls", instance.uid))
+    for uid_dir in uid_dirs:
+        helpers.rm_dir(uid_dir)
+
+    # remove extra zombie thumbnails (legacy layout: many media share one directory)
+    if instance.thumbnail and os.path.dirname(instance.thumbnail.path) != media_uid_dir(settings.THUMBNAIL_UPLOAD_DIR, instance.uid):
         thumbnails_path = os.path.dirname(instance.thumbnail.path)
         thumbnails = glob.glob(f'{thumbnails_path}/{instance.uid.hex}.*')
         for thumbnail in thumbnails:

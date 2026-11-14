@@ -56,7 +56,7 @@ from .models import (
     TranscriptionRequest,
     VideoTrimRequest,
 )
-from .models.utils import PREVIEW_PROFILE_NAME
+from .models.utils import PREVIEW_PROFILE_NAME, media_uid_shard_path
 
 logger = get_task_logger(__name__)
 
@@ -230,7 +230,9 @@ def chunkize_media(self, friendly_token, profiles, force=True):
 
     profiles = [EncodeProfile.objects.get(id=profile) for profile in profiles]
     media = Media.objects.get(friendly_token=friendly_token)
-    cwd = os.path.dirname(os.path.realpath(media.media_file.path))
+    # abspath, not realpath: for a symlinked original the working directory (where ffmpeg
+    # writes chunks) must be the MediaCMS-side one, never the external archive's
+    cwd = os.path.dirname(os.path.abspath(media.media_file.path))
     file_name = media.media_file.path.split("/")[-1]
     random_prefix = produce_friendly_token()
     file_format = f"{random_prefix}_{file_name}"
@@ -745,7 +747,9 @@ def whisper_transcribe(friendly_token, translate_to_english=False):
         if not language:
             language = Language.objects.create(code="whisper", title="Transcription")
 
-    cwd = os.path.dirname(os.path.realpath(media.media_file.path))
+    # abspath, not realpath: for a symlinked original the working directory (where ffmpeg
+    # writes chunks) must be the MediaCMS-side one, never the external archive's
+    cwd = os.path.dirname(os.path.abspath(media.media_file.path))
     request.status = "running"
     request.save(update_fields=["status"])
 
@@ -945,6 +949,18 @@ def _merge_master_playlist(permanent_master, incoming_master, variant_name):
         handle.write(existing.dumps())
 
 
+def hls_permanent_dir(uid):
+    """Directory holding a media's HLS tree: hls/aa/bb/<uid.hex>.
+
+    A media that already has an unsharded hls/<uid.hex> tree keeps writing there, so its
+    variants are merged into one master playlist instead of being split across layouts.
+    """
+    legacy_dir = os.path.join(settings.HLS_DIR, uid.hex)
+    if os.path.isdir(legacy_dir):
+        return legacy_dir
+    return os.path.join(settings.HLS_DIR, media_uid_shard_path(uid))
+
+
 def _install_incremental_hls(permanent_dir, temp_dir, variant_name):
     """Copy one variant into the permanent HLS tree and merge master.m3u8."""
     os.makedirs(permanent_dir, exist_ok=True)
@@ -1012,7 +1028,7 @@ def create_hls(self, friendly_token, encoding_id=None):
         return False
 
     uid_hex = media.uid.hex
-    permanent_dir = os.path.join(settings.HLS_DIR, uid_hex)
+    permanent_dir = hls_permanent_dir(media.uid)
     media_files = []
     resolution = None
 
@@ -1132,6 +1148,46 @@ def refresh_media_metadata(friendly_token, user_id=None):
 
     refresh_and_check_media(media, user=user)
     return True
+
+
+# Moving a library is disk bound: keep each worker to a gentle pace and run it off-peak
+PATH_MIGRATE_RATE_LIMIT = "30/m"
+
+
+def _task_user(user_id):
+    if not user_id:
+        return None
+    return User.objects.filter(pk=user_id).first()
+
+
+@task(name="migrate_media_paths", queue="long_tasks", rate_limit=PATH_MIGRATE_RATE_LIMIT)
+def migrate_media_paths_task(friendly_token, user_id=None):
+    """Move one media's files to the sharded layout (verified before anything old is deleted).
+
+    Returns the PathMigrationResult as a dict; a failure never raises so one bad media
+    cannot stop the rest of a bulk run.
+    """
+    from files.path_migrate import STATUS_FAILED, migrate_media_paths
+
+    media = Media.objects.filter(friendly_token=friendly_token).first()
+    if media is None:
+        logger.info("path migrate: media not found - friendly_token=%s", friendly_token)
+        return {"friendly_token": friendly_token, "status": STATUS_FAILED, "reason": "media not found", "moved": 0, "removed": 0}
+
+    result = migrate_media_paths(media, user=_task_user(user_id)).as_dict()
+    result["friendly_token"] = friendly_token
+    return result
+
+
+@task(name="migrate_media_paths_bulk", queue="short_tasks")
+def migrate_media_paths_bulk(friendly_tokens, user_id=None):
+    """Fan a selection out into one migrate_media_paths task per media."""
+    queued = 0
+    for friendly_token in dict.fromkeys(friendly_tokens or []):
+        migrate_media_paths_task.delay(friendly_token, user_id)
+        queued += 1
+    logger.info("path migrate: queued %s media - user_id=%s", queued, user_id)
+    return {"queued": queued}
 
 
 @task(name="check_running_states", queue="short_tasks")

@@ -205,9 +205,13 @@ MEDIA_ROOT = BASE_DIR + "/media_files/"
 
 MEDIA_UPLOAD_DIR = "original/"
 MEDIA_ENCODING_DIR = "encoded/"
-THUMBNAIL_UPLOAD_DIR = f"{MEDIA_UPLOAD_DIR}/thumbnails/"
-SUBTITLES_UPLOAD_DIR = f"{MEDIA_UPLOAD_DIR}/subtitles/"
+THUMBNAIL_UPLOAD_DIR = "thumbnails/"
+SUBTITLES_UPLOAD_DIR = "subtitles/"
 HLS_DIR = os.path.join(MEDIA_ROOT, "hls/")
+
+# Operator-owned library tree scanned by filesystem sync. It is never published through
+# nginx and is not part of MEDIA_ROOT; mount it (read-only is fine for symlink "preserve").
+FILESYSTEM_IMPORT_ROOT = "/external-media_files"
 
 # Protect media files via nginx auth_request
 # When True, nginx delegates authorization for /media/<protected>/... to a
@@ -215,7 +219,7 @@ HLS_DIR = os.path.join(MEDIA_ROOT, "hls/")
 USE_X_ACCEL_REDIRECT = True
 # Subdirectories of MEDIA_ROOT that should be gated. "chunks" is intentionally
 # omitted (upload state, not playback).
-X_ACCEL_PROTECTED_PATHS = ["encoded", "hls", "original"]
+X_ACCEL_PROTECTED_PATHS = ["encoded", "hls", "original", "thumbnails", "subtitles", "categories"]
 X_ACCEL_AUTH_CACHE_SECONDS = 300
 
 FFMPEG_COMMAND = "ffmpeg"  # this is the path

@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { usePopup } from '../../../utils/hooks/usePopup';
-import { formatManagementTableDate } from '../../../utils/helpers/';
+import { formatManagementTableDate, translateString } from '../../../utils/helpers/';
 import { PageStore } from '../../../utils/stores/';
 import { PopupMain } from '../../_shared';
 import { MaterialIcon } from '../../_shared/material-icon/MaterialIcon';
@@ -57,8 +57,51 @@ function ManageItemMediaActions(props) {
     const [popupContentRef, PopupContent, PopupTrigger] = usePopup();
     const [isOpenPopup, setIsOpenPopup] = useState(false);
 
+    const [migrateRef, MigrateContent, MigrateTrigger] = usePopup();
+    const [pathState, setPathState] = useState({ loading: false, eligible: null, already: false, reason: '' });
+
     function onPopupShow() {
         setIsOpenPopup(true);
+    }
+
+    function onMigrateShow() {
+        setIsOpenPopup(true);
+
+        if ('function' !== typeof props.onCheckMigratePaths) {
+            return;
+        }
+
+        setPathState({ loading: true, eligible: null, already: false, reason: '' });
+        props
+            .onCheckMigratePaths(props.token)
+            .then((data) =>
+                setPathState({
+                    loading: false,
+                    eligible: true === data.eligible,
+                    already: true === data.already_migrated,
+                    reason: data.reason || '',
+                })
+            )
+            .catch(() =>
+                setPathState({
+                    loading: false,
+                    eligible: false,
+                    already: false,
+                    reason: translateString('Could not check this media.'),
+                })
+            );
+    }
+
+    function onMigrateCancel() {
+        migrateRef.current.tryToHide();
+    }
+
+    function onMigrateProceed() {
+        migrateRef.current.tryToHide();
+        if ('function' === typeof props.onMigratePaths) {
+            // the list reports the outcome itself; a failure has nothing more to do here
+            props.onMigratePaths(props.token).catch(() => {});
+        }
     }
 
     function onPopupHide() {
@@ -133,6 +176,56 @@ function ManageItemMediaActions(props) {
                 <button title={'Delete' + (void 0 !== props.title ? ' "' + props.title + '"' : '')}>Delete</button>
             </PopupTrigger>
 
+            {'function' === typeof props.onMigratePaths ? (
+                <>
+                    <span className="seperator">|</span>
+                    <MigrateTrigger contentRef={migrateRef}>
+                        <button
+                            className="mi-migrate-paths"
+                            title={
+                                translateString('Migrate paths') +
+                                (void 0 !== props.title ? ' "' + props.title + '"' : '')
+                            }
+                        >
+                            {translateString('Migrate paths')}
+                        </button>
+                    </MigrateTrigger>
+
+                    <MigrateContent contentRef={migrateRef} showCallback={onMigrateShow} hideCallback={onPopupHide}>
+                        <PopupMain>
+                            <div className="popup-message">
+                                <span className="popup-message-title">{translateString('Path migration')}</span>
+                                <span className="popup-message-main">
+                                    {pathState.loading
+                                        ? translateString('Checking') + '\u2026'
+                                        : pathState.already
+                                          ? translateString('This media is already on the sharded layout.')
+                                          : false === pathState.eligible
+                                            ? translateString('Cannot migrate now:') + ' ' + pathState.reason
+                                            : translateString(
+                                                  'Move the files of this media to the sharded layout? They are copied and verified first, and the old files are deleted only after every check passes.'
+                                              )}
+                                </span>
+                            </div>
+                            <hr />
+                            <span className="popup-message-bottom">
+                                <button className="button-link cancel-profile-removal" onClick={onMigrateCancel}>
+                                    CANCEL
+                                </button>
+                                {pathState.loading || pathState.already || false === pathState.eligible ? null : (
+                                    <button
+                                        className="button-link proceed-profile-removal proceed-path-migration"
+                                        onClick={onMigrateProceed}
+                                    >
+                                        PROCEED
+                                    </button>
+                                )}
+                            </span>
+                        </PopupMain>
+                    </MigrateContent>
+                </>
+            ) : null}
+
             <PopupContent contentRef={popupContentRef} showCallback={onPopupShow} hideCallback={onPopupHide}>
                 <PopupMain>
                     <div className="popup-message">
@@ -194,7 +287,10 @@ export function ManageMediaItem(props) {
                     <ManageItemMediaActions
                         containerRef={actionsContainerRef}
                         title={props.title}
+                        token={props.token}
                         onProceed={onClickProceed}
+                        onMigratePaths={props.onMigratePaths}
+                        onCheckMigratePaths={props.onCheckMigratePaths}
                     />
                 )}
             </div>

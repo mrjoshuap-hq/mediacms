@@ -54,7 +54,7 @@ Do not mix them. Editors and managers use Manage pages. Staff and superusers use
 
 ## Upgrade impact rows
 
-When a change needs an extra operator step after update, add a row to the **Upgrade impact** table in `docs/_shared/fork-whats-new.md` in the same pull request.
+When a change needs an extra operator step after update, add a row to the **Upgrade impact** table in `docs/_shared/fork-whats-new.md` in the same pull request. If the change is significant for operators comparing upstream ≤v9 with fork 10 stable/beta, also update the matching page under `docs/en/releases/` ([Compare](../releases/compare.md), [Features](../releases/features.md), [Fixes](../releases/fixes.md), [Models and migrations](../releases/migrations.md), [Frontend](../releases/frontend.md), or [Upgrade tips](../releases/upgrade-tips.md)).
 
 | Column | Use it for |
 |--------|------------|

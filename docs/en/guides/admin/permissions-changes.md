@@ -6,7 +6,7 @@ This page lists permission behavior that changed in the MediaCMS v10 beta so the
     These rows describe permission behavior that changed so the app matches the roles and permissions guides. Review the table before you upgrade a portal that already has editors, pending users, shares, or RBAC groups.
 
 !!! note "Extra install steps"
-    This alignment needs a **frontend build** and a **web restart**. It does not add Django migrations. See the **Upgrade impact** table on [What's new](../../reference/whats-new.md).
+    This alignment needs a **frontend build** and a **web restart**. It does not add Django migrations. See [Upgrade tips](../../releases/upgrade-tips.md) and the **Upgrade impact** table on [What's new](../../reference/whats-new.md).
 
 ## Before and after
 

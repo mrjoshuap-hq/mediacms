@@ -81,6 +81,33 @@ See [Review and publish](review.md).
 
 An editor can still delete a media item from its own media page. Select **More options**, then **Delete**.
 
+## Move media to the sharded path layout
+
+New uploads store their files under a sharded path, for example `original/a1/b2/<uid>/source.mp4`. Media that you uploaded before this layout stays on the older paths until a manager moves it. MediaCMS serves both layouts. Nothing moves on its own when you update.
+
+Only managers and superusers see this action. An editor does not see it, and the API answers with 403.
+
+!!! note
+    The action copies and verifies every file before it changes the database. It deletes the old files only after every check passes, again through the new names. If a check fails, the media keeps its old layout. It is safe to run the action again. A media item that is already on the new layout is skipped.
+
+To move one media item:
+
+1. Open **Manage media**.
+2. Select **Migrate paths** in the row of the item. The popup checks the media first.
+3. If the popup says **Cannot migrate now**, read the reason. A common reason is an encoding that is still running. Try again later.
+4. Select **PROCEED**. The result shows above the table.
+
+To move several media items:
+
+1. Select the check boxes of the items.
+2. Select **Bulk actions**, select **Migrate paths (sharded layout)**, and select **Apply**.
+3. Select **PROCEED**. The portal queues one background task for each item and shows how many it queued.
+
+!!! warning
+    Moving a large library copies every file. Run it outside peak hours. The table lists 50 items on a page, and one request accepts up to 500 items. The single-item action runs inside the request, so use the bulk action for large files.
+
+Each moved media item gets a `path_migrated` entry in its audit log. A failed item gets no entry, and stays as it was.
+
 ## Moderate comments
 
 1. Open **Manage comments**.

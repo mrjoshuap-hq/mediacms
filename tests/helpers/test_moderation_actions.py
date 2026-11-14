@@ -39,6 +39,10 @@ class ModerationMediaActionTest(TestCase):
             "original_deleted",
             "metadata_refresh",
             "integrity_warning",
+            "fs_imported",
+            "fs_original_gone",
+            "fs_pruned",
+            "path_migrated",
         ):
             self.assertFalse(save_user_action(actor, friendly_token=self.media.friendly_token, action=action))
         self.assertFalse(MediaAction.objects.filter(media=self.media, action__in=dict(MODERATION_MEDIA_ACTIONS)).exists())
@@ -55,6 +59,16 @@ class ModerationMediaActionTest(TestCase):
             self.assertIn(action, dict(MODERATION_MEDIA_ACTIONS))
             event = record_moderation_action(self.moderator, self.media, action, extra_info="test")
             self.assertIsNotNone(event)
+            self.assertEqual(event.action, action)
+
+    def test_filesystem_path_audit_actions_are_moderation_actions(self):
+        for action in ("fs_imported", "fs_original_gone", "fs_pruned", "path_migrated"):
+            self.assertIn(action, dict(MODERATION_MEDIA_ACTIONS))
+            self.assertLessEqual(len(action), MediaAction._meta.get_field("action").max_length)
+            self.assertNotIn(action, VALID_USER_ACTIONS)
+            event = record_moderation_action(self.moderator, self.media, action, extra_info="test")
+            self.assertIsNotNone(event)
+            event.full_clean()
             self.assertEqual(event.action, action)
 
     def test_clear_media_reports_logs_report_cleared(self):

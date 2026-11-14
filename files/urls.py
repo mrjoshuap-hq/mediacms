@@ -113,6 +113,12 @@ urlpatterns = [
     # ADMIN VIEWS
     re_path(r"^api/v1/encode_profiles/$", views.EncodeProfileList.as_view()),
     re_path(r"^api/v1/manage_media$", management_views.MediaList.as_view()),
+    re_path(r"^api/v1/manage_media/migrate_paths$", management_views.MediaPathMigrateBulk.as_view(), name="api_manage_media_migrate_paths_bulk"),
+    re_path(
+        rf"^api/v1/manage_media/{friendly_token}/migrate_paths$",
+        management_views.MediaPathMigrate.as_view(),
+        name="api_manage_media_migrate_paths",
+    ),
     re_path(r"^api/v1/manage_comments$", management_views.CommentList.as_view()),
     re_path(r"^api/v1/manage_users$", management_views.UserList.as_view()),
     re_path(r"^api/v1/tasks$", views.TasksList.as_view()),

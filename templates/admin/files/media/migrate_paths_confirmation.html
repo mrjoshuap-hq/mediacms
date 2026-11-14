@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+{% load i18n l10n admin_urls custom_filters %}
+{% get_current_language as LANGUAGE_CODE %}
+{% get_current_language_bidi as LANGUAGE_BIDI %}
+
+{% block content %}
+<div id="content-main" class="admin-confirm-page">
+    <h1>{{ "Migrate media paths"|custom_translate:LANGUAGE_CODE }}</h1>
+
+    <div class="warningnote">
+        <p>{{ "This action moves the selected media files to the sharded path layout."|custom_translate:LANGUAGE_CODE }}</p>
+        <p>{{ "Old files are deleted only after every new file is verified."|custom_translate:LANGUAGE_CODE }}</p>
+        <p>{{ "Each media is processed in the background. A failure leaves the old files untouched."|custom_translate:LANGUAGE_CODE }}</p>
+    </div>
+
+    {% if blocked %}
+    <h2>{{ "Cannot migrate"|custom_translate:LANGUAGE_CODE }}</h2>
+    <ul>
+        {% for item in blocked %}
+        <li>
+            <strong>{{ item.media.title|truncatechars:60 }}</strong>
+            (<code class="media-id" dir="ltr">{{ item.media.friendly_token }}</code>) — {{ item.reason }}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if eligible %}
+    <h2>{{ "Can migrate"|custom_translate:LANGUAGE_CODE }}</h2>
+    <ul>
+        {% for media in eligible %}
+        <li>
+            <strong>{{ media.title|truncatechars:60 }}</strong>
+            (<code class="media-id" dir="ltr">{{ media.friendly_token }}</code>)
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p><strong>{{ "No media can be migrated. Change the selection and try again."|custom_translate:LANGUAGE_CODE }}</strong></p>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="{{ action_name }}">
+        <input type="hidden" name="apply" value="1">
+        {% for media in media_items %}
+        <input type="hidden" name="{{ action_checkbox_name }}" value="{{ media.pk|unlocalize }}">
+        {% endfor %}
+
+        <div class="submit-row" style="margin-top: 1em;">
+            {% if can_confirm %}
+            <input type="submit" class="default" value="{{ "Migrate paths"|custom_translate:LANGUAGE_CODE }}">
+            <a href="{{ cancel_url }}" class="button cancel-link">{{ "Cancel"|custom_translate:LANGUAGE_CODE }}</a>
+            {% else %}
+            <a href="{{ cancel_url }}" class="button cancel-link">{{ "Back to media list"|custom_translate:LANGUAGE_CODE }}</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% endblock %}

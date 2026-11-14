@@ -66,6 +66,10 @@ export function listLtiPlatforms() {
     return axios.get(baseUrl() + '/lti_platforms/');
 }
 
+export function listFilesystemMounts() {
+    return axios.get(baseUrl() + '/filesystem_mounts/');
+}
+
 export function getProgress(id) {
     return axios.get(baseUrl() + '/' + id + '/progress/');
 }

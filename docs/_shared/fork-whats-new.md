@@ -3,6 +3,8 @@
 
 These notes cover the fork beta line (`mediacms-next`) relative to upstream `main` at MediaCMS 9.4.0. Entries use the same Conventional Commits types as `.releaserc.json`: **Features**, **Bug Fixes**, **Documentation**, **Refactors**.
 
+For an at-a-glance comparison of upstream ≤v9 with fork 10.0.0 **stable** and **beta**, plus upgrade tips (`manage.py`, Make, admin portal), start at [Releases](../releases/index.md).
+
 See [Site health and database](../guides/admin/site.md), [Admin portal map](../guides/admin/portal-map.md), and [Fork beta and stable images](../getting-started/install.md#fork-beta-and-stable-images-ghcr).
 
 ## Upgrade impact
@@ -17,6 +19,7 @@ Use this table when you update a portal. It lists extra steps beyond pulling the
 | Admin portal dashboards and health | Yes when new admin models land | No | Optional | web | Collect static if you do not use the image static pipeline |
 | Logging / trusted proxies settings | No | No | No | web, celery_worker, celery_beat | Set `TRUSTED_PROXIES` / log settings in `local_settings.py` |
 | HLS / encoding task changes | No (unless a new setting is required) | No | No | celery_worker, celery_beat | Confirm beat schedule for cleanup tasks |
+| Sharded media paths, path migrate, and filesystem library sync | Yes (`files`, `actions`, `migrationservice` migrations) | Yes (`make build-frontend`) | Yes (`process_translations`) | web, celery_worker, celery_beat | Custom nginx needs the `thumbnails`, `categories`, and `subtitles` blocks. Optional bind mount under `FILESYSTEM_IMPORT_ROOT`. Existing media stays on legacy paths until a manager runs **Migrate paths**. See [Manage media](../guides/operator/manage-media.md#move-media-to-the-sharded-path-layout) and [Content migration](../guides/admin/content-migration.md#filesystem-library) |
 | Translation-only fixes | No | Yes when React strings change | Yes (`process_translations`) | web after static copy | Django template strings do not need a frontend build |
 
 Column meanings:
@@ -62,6 +65,10 @@ When you add a feature or fix that needs an extra step, add a row here in the sa
 * **upload:** FineUploader and API accept optional title, description, and related metadata on create
 * **player:** soft-nav next/prev keeps fullscreen and continues autoplay
 * **media:** session unlock for password-protected media (`POST /api/v1/media/{token}/unlock`) with hashed `Media.password`
+* **paths:** new media files use sharded `<kind>/<aa>/<bb>/<uid>/…` paths (originals, encodings, HLS, thumbnails, subtitles, categories) with no username or client file name; legacy paths keep working
+* **paths:** gated path migrate for one or many media (Manage media **Migrate paths**, `/api/v1/manage_media/<token>/migrate_paths`), copy and verify before old files are deleted; audit action `path_migrated`
+* **migrations:** **Filesystem library** source that syncs a mounted library under `FILESYSTEM_IMPORT_ROOT`, with required owner, `ingest` or `preserve` storage, sidecar captions, and folder categories
+* **migrations:** re-runnable library sync that skips imported files, and prunes media whose file is gone only when it has no playable encodings; audit actions `fs_imported`, `fs_original_gone`, `fs_pruned`
 
 ## Bug Fixes
 
@@ -79,6 +86,7 @@ When you add a feature or fix that needs an extra step, add a row here in the sa
 
 * **admin:** permission access-change table for the v10 beta role and ACL alignment
 * **ops:** Upgrade impact table for migrations, frontend builds, language rebuilds, and restarts
+* **ops:** known-issue note for amd64 FFmpeg/Bento4 in Docker builds on arm64 (Apple Silicon `InvalidBaseImagePlatform`)
 * **admin:** admin portal guides for site, moderation, processing, people, integrations, and site upgrade
 * **ops:** Docker upgrade checklist and maintenance backup notes (#1562, #1564)
 * **meta:** AI disclosure attestation on pull request and issue templates (#1640)

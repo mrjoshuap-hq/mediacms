@@ -1,3 +1,5 @@
+import hashlib
+
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import IntegrityError
@@ -20,6 +22,7 @@ from files.models import (
 from files.models.utils import (
     category_thumb_path,
     generate_uid,
+    media_uid_shard_path,
     original_media_file_path,
     original_thumbnail_file_path,
 )
@@ -211,15 +214,18 @@ class SmallModelTests(TestCase):
         self.assertEqual(len(generate_uid()), 16)
         self.assertNotEqual(generate_uid(), generate_uid())
 
-    def test_upload_paths_are_per_user(self):
+    def test_upload_paths_are_keyed_by_uid_not_username(self):
         user = make_user("paths_user")
         media = Media(user=user)
-        self.assertEqual(original_media_file_path(media, "dir/clip.mp4"), f"original/user/paths_user/{media.uid.hex}.clip.mp4")
-        self.assertEqual(original_thumbnail_file_path(media, "thumb.jpg"), "original//thumbnails/user/paths_user/thumb.jpg")
+        shard = media_uid_shard_path(media.uid)
+        self.assertEqual(original_media_file_path(media, "dir/clip.mp4"), f"original/{shard}/source.mp4")
+        self.assertEqual(original_thumbnail_file_path(media, "thumb.jpg"), f"thumbnails/{shard}/thumb.jpg")
+        self.assertNotIn("paths_user", original_media_file_path(media, "dir/clip.mp4"))
 
-    def test_category_thumbnail_path_uses_the_uid(self):
+    def test_category_thumbnail_path_is_sharded_by_uid(self):
         category = type("CategoryStub", (), {"uid": "abc123"})()
-        self.assertEqual(category_thumb_path(category, "x/pic.jpg"), "original/categories/abc123.pic.jpg")
+        shard = hashlib.md5(b"abc123").hexdigest()
+        self.assertEqual(category_thumb_path(category, "x/pic.jpg"), f"categories/{shard[0:2]}/{shard[2:4]}/abc123.jpg")
 
 
 class MediaActionModelTests(TestCase):

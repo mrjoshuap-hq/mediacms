@@ -54,13 +54,15 @@ Use port 8088 when you edit the frontend. Use port 80 to check what users see.
 3. Build the images:
 
     ```bash
-    docker compose -f docker-compose-dev.yaml build
+    make docker-build
     ```
+
+    On **Apple Silicon**, BuildKit may warn `InvalidBaseImagePlatform` because the Dockerfile copies amd64 FFmpeg from a pinned upstream image and ships an x86_64 Bento4 zip. That is expected. Encode/HLS under emulation can be slow or flaky. See [Fixes and known issues](../../releases/fixes.md#amd64-media-tools-in-the-image).
 
 4. Start the services:
 
     ```bash
-    docker compose -f docker-compose-dev.yaml up
+    make docker-up
     ```
 
 5. Wait a few minutes. The first start installs frontend packages and runs migrations.
@@ -132,13 +134,13 @@ Each page has an entry file `frontend/src/entries/<name>.js`. The template for t
 3. Build the bundles for port 80:
 
     ```bash
-    make build-frontend
+    make frontend-build
     ```
 
 4. Open `http://localhost`. Check the change.
 5. Commit the changes in `static/` together with the changes in `frontend/src/`.
 
-`make build-frontend` runs these commands:
+`make frontend-build` (alias: `make build-frontend`) runs these commands:
 
 ```bash
 docker compose -f docker-compose-dev.yaml exec frontend npm run dist
@@ -179,13 +181,26 @@ The shortcut `make admin-shell` does the same. It needs the `web` container.
 
 Run these from the repository root. The development stack must be running.
 
+Pattern: `make <thing>` runs the common actions for that area; `make <thing>-<action>` runs one action. Older names such as `build-frontend` and `lint-frontend` still work as aliases.
+
 | Target | What it runs |
 |--------|--------------|
-| `make build-frontend` | Builds the frontend, copies it to `static/`, restarts `web`. |
-| `make test` | Backend tests with `pytest -n auto` and `TESTING=True`. |
+| `make build` | `build-frontend`, `build-docs`, `build-languages`. |
+| `make docker` | Local image build (`docker-build`). |
+| `make docker-build` | Builds `mediacms-dev:latest` and `mediacms:local`. Alias: `build-docker`. |
+| `make docker-build-full` | Also builds `mediacms:full` (Whisper). |
+| `make docker-up` / `docker-down` | Start or stop the dev Compose stack. |
+| `make frontend` | `frontend-build`, `frontend-lint`, `frontend-test`. |
+| `make frontend-build` | Builds the frontend, copies it to `static/`, restarts `web`. Alias: `build-frontend`. |
+| `make lint` | `pre-commit run --all-files`. |
+| `make test` | `lint`, then backend and frontend tests. |
+| `make test-backend` | Backend tests with `pytest -n auto` and `TESTING=True`. |
 | `make test-coverage` | Backend tests with coverage. |
-| `make test-frontend` | Frontend Jest tests in CI mode. |
+| `make test-frontend` | Frontend Jest tests in CI mode. Alias: `frontend-test`. |
 | `make test-frontend-coverage` | Frontend Jest tests with coverage. |
+| `make docs` | One-shot docs build (`docs-build`). |
+| `make docs-up` / `docs-down` / `docs-logs` | Docs watcher lifecycle. |
+| `make languages` | `process_translations` in the `web` container. Alias: `build-languages`. |
 | `make admin-shell` | Shell in the `web` container. |
 
 See [Tests](tests.md) for the test commands.
@@ -205,7 +220,7 @@ See [Tests](tests.md) for the test commands.
 3. Run all checks: `pre-commit run --all`.
 4. Fix every problem the checks report.
 
-Python uses `black`, `isort` (profile `black`), and `flake8`. JavaScript and TypeScript use Prettier (`.prettierrc`) and ESLint. Pre-commit also runs hygiene hooks (end-of-file, trailing whitespace, YAML/JSON, merge conflicts, large files, private keys). Local ESLint hooks need the package `node_modules` above. You can also run `make lint-frontend` on the host.
+Python uses `black`, `isort` (profile `black`), and `flake8`. JavaScript and TypeScript use Prettier (`.prettierrc`) and ESLint. Pre-commit also runs hygiene hooks (end-of-file, trailing whitespace, YAML/JSON, merge conflicts, large files, private keys). Local ESLint hooks need the package `node_modules` above. To run only the frontend ESLint hooks: `make frontend-lint` (alias: `make lint-frontend`).
 
 ## Fake media for development
 

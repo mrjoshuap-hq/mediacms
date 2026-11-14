@@ -1,3 +1,4 @@
+from .filesystem import FilesystemProvider
 from .kaltura import KalturaProvider
 from .panopto import PanoptoProvider
 from .youtube import YouTubeProvider
@@ -6,6 +7,7 @@ from .youtube import YouTubeProvider
 def get_provider_class(name):
     """Provider class for a provider name"""
     providers = {
+        FilesystemProvider.name: FilesystemProvider,
         KalturaProvider.name: KalturaProvider,
         PanoptoProvider.name: PanoptoProvider,
         YouTubeProvider.name: YouTubeProvider,

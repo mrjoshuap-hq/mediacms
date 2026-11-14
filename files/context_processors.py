@@ -3,8 +3,6 @@ from django.conf import settings
 from cms.permissions import user_allowed_to_comment
 from cms.version import VERSION
 
-from cms.permissions import user_allowed_to_comment
-
 from .frontend_translations import get_translation, get_translation_strings
 from .methods import (
     is_mediacms_editor,

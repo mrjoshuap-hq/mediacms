@@ -24,6 +24,14 @@ const SOURCES = [
         experimental: true,
         description: 'Import video, captions and metadata from YouTube urls, playlists or a channel.',
     },
+    {
+        id: 'filesystem',
+        label: 'Filesystem library',
+        available: true,
+        experimental: true,
+        description:
+            'Sync media and sidecar captions from a library mounted on the server. Run it again to catch up without duplicates.',
+    },
 ];
 
 export class MigrationNewPage extends Page {

@@ -15,8 +15,14 @@ from users.serializers import UserSerializer
 
 from .methods import is_mediacms_manager
 from .models import Category, Comment, Media
+from .path_migrate import (
+    ALREADY_SHARDED_REASON,
+    can_migrate_media_paths,
+    migrate_media_paths,
+)
 from .permissions import IsMediacmsEditor, IsMediacmsManager
 from .serializers import CommentSerializer, MediaSerializer
+from .tasks import migrate_media_paths_bulk
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +158,102 @@ class MediaList(APIView):
                 tokens,
             )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+MAX_PATH_MIGRATE_TOKENS = 500
+
+
+class MediaPathMigrate(APIView):
+    """Move one media's files from the legacy layout to the sharded layout.
+
+    Managers and admins only. GET reports whether the media is eligible right now; POST
+    runs the verified migration synchronously (the old files are deleted only after the
+    new ones are proven). For large files or many media use the bulk endpoint, which runs
+    on Celery.
+    """
+
+    permission_classes = (IsMediacmsManager,)
+    parser_classes = (JSONParser,)
+
+    def _media(self, friendly_token):
+        return Media.objects.filter(friendly_token=friendly_token).first()
+
+    @swagger_auto_schema(
+        tags=['Manage'],
+        operation_summary='Check media path migration',
+        operation_description='Whether a media can be moved to the sharded path layout now (managers and admins)',
+    )
+    def get(self, request, friendly_token, format=None):
+        media = self._media(friendly_token)
+        if media is None:
+            return Response({"detail": "media not found"}, status=status.HTTP_404_NOT_FOUND)
+        eligible, reason = can_migrate_media_paths(media)
+        return Response(
+            {
+                "friendly_token": media.friendly_token,
+                "eligible": eligible,
+                "already_migrated": reason == ALREADY_SHARDED_REASON,
+                "reason": reason,
+            }
+        )
+
+    @swagger_auto_schema(
+        tags=['Manage'],
+        operation_summary='Migrate media paths',
+        operation_description='Move a media to the sharded path layout, deleting legacy files only after full verification (managers and admins)',
+    )
+    def post(self, request, friendly_token, format=None):
+        media = self._media(friendly_token)
+        if media is None:
+            return Response({"detail": "media not found"}, status=status.HTTP_404_NOT_FOUND)
+        result = migrate_media_paths(media, user=request.user)
+        logger.info(
+            "Admin action: media paths migrated - friendly_token=%s, status=%s, admin_user_id=%s, admin_username=%s",
+            media.friendly_token,
+            result.status,
+            request.user.id,
+            request.user.username,
+        )
+        body = {"friendly_token": media.friendly_token, **result.as_dict()}
+        return Response(body, status=status.HTTP_200_OK if result.ok else status.HTTP_409_CONFLICT)
+
+
+class MediaPathMigrateBulk(APIView):
+    """Queue the path migration of many media (Celery, one task per media).
+
+    Managers and admins only. Body: {"tokens": ["<friendly_token>", ...]}.
+    """
+
+    permission_classes = (IsMediacmsManager,)
+    parser_classes = (JSONParser,)
+
+    @swagger_auto_schema(
+        tags=['Manage'],
+        operation_summary='Bulk migrate media paths',
+        operation_description=f'Queue the sharded path migration for up to {MAX_PATH_MIGRATE_TOKENS} media (managers and admins)',
+    )
+    def post(self, request, format=None):
+        tokens = request.data.get("tokens") if isinstance(request.data, dict) else None
+        if not isinstance(tokens, list) or not tokens or not all(isinstance(token, str) and token for token in tokens):
+            return Response({"detail": "tokens must be a non-empty list of friendly tokens"}, status=status.HTTP_400_BAD_REQUEST)
+        tokens = list(dict.fromkeys(tokens))
+        if len(tokens) > MAX_PATH_MIGRATE_TOKENS:
+            return Response({"detail": f"at most {MAX_PATH_MIGRATE_TOKENS} media per request"}, status=status.HTTP_400_BAD_REQUEST)
+
+        known = set(Media.objects.filter(friendly_token__in=tokens).values_list("friendly_token", flat=True))
+        queued = [token for token in tokens if token in known]
+        unknown = [token for token in tokens if token not in known]
+        task = migrate_media_paths_bulk.delay(queued, request.user.id) if queued else None
+        logger.info(
+            "Admin action: media path migration queued - count=%s, admin_user_id=%s, admin_username=%s",
+            len(queued),
+            request.user.id,
+            request.user.username,
+        )
+        return Response(
+            {"queued": len(queued), "unknown": unknown, "task_id": getattr(task, "id", None)},
+            status=status.HTTP_202_ACCEPTED if queued else status.HTTP_404_NOT_FOUND,
+        )
 
 
 class CommentList(APIView):

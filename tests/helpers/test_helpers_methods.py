@@ -26,6 +26,7 @@ from files.models import (
     Tag,
     VideoChapterData,
     VideoTrimRequest,
+    media_uid_shard_path,
 )
 from files.tests import create_account, create_media, fixture_path
 from files.tests.media_utils import IMAGE_JPG, SMALL_VIDEO
@@ -468,7 +469,8 @@ class CopyMediaTests(TestCase):
         self.assertTrue(copy.uploaded_poster)
         self.assertTrue(copy.uploaded_thumbnail)
         self.assertTrue(copy.sprites)
-        self.assertEqual(copy.hls_file, os.path.join(settings.HLS_DIR, copy.uid.hex, "master.m3u8"))
+        # even a legacy (unsharded) source is copied into the copy's own sharded tree
+        self.assertEqual(copy.hls_file, os.path.join(settings.HLS_DIR, media_uid_shard_path(copy.uid), "master.m3u8"))
         self.assertTrue(os.path.isfile(copy.hls_file))
 
 

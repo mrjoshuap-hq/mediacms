@@ -87,3 +87,4 @@ def videochapterdata_delete(sender, instance, **kwargs):
     )
 
     helpers.rm_dir(instance.media.video_chapters_folder)
+    helpers.rm_dir(instance.media.legacy_video_chapters_folder)

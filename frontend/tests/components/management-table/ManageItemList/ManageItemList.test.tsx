@@ -4,7 +4,7 @@ import axios from 'axios';
 import { renderIntoContainer, act } from '../../../_support/render';
 import { click, changeValue, flush, findByText } from '../../../_support/compD_dom';
 import { PageStore } from '../../../../src/static/js/utils/stores/';
-import { UserProvider } from '../../../../src/static/js/utils/contexts/UserContext';
+import UserContext, { UserProvider } from '../../../../src/static/js/utils/contexts/UserContext';
 import { ManageItemList } from '../../../../src/static/js/components/management-table/ManageItemList/ManageItemList';
 
 jest.mock('axios');
@@ -238,6 +238,160 @@ describe('components/management-table', () => {
                 jest.advanceTimersByTime(50);
             });
             unmount();
+        });
+
+        describe('path migration (managers and superusers)', () => {
+            const rowActions = '.manage-media-item:not(.manage-item-header) .actions';
+
+            test('Bulk action queues the selected tokens and reports the count', async () => {
+                mockedAxios.get.mockResolvedValueOnce({
+                    data: { count: 2, results: [mediaItem('a'), mediaItem('b')] },
+                } as any);
+                mockedAxios.post.mockResolvedValueOnce({ status: 202, data: { queued: 2, unknown: ['zz'] } } as any);
+                document.cookie = 'csrftoken=tok';
+                const { container, unmount } = await renderList({
+                    requestUrl: '/api/v1/manage_media?page=1',
+                    manageType: 'media',
+                });
+                const options = container.querySelector('.manage-items-options') as HTMLElement;
+                const choices = Array.from(options.querySelectorAll('select option')).map((o) =>
+                    o.getAttribute('value')
+                );
+                expect(choices).toEqual(['', 'delete', 'migrate_paths']);
+
+                click(container.querySelector('.manage-item-header input'));
+                changeValue(options.querySelector('select'), 'migrate_paths');
+                click(findByText(options, 'button', 'Apply'));
+                expect(options.querySelector('.popup-message-title')?.textContent).toBe('Bulk path migration');
+                expect(options.querySelector('.popup-message-main')?.textContent).toContain('sharded layout');
+                click(options.querySelector('.proceed-profile-removal'));
+                await flush();
+
+                expect(mockedAxios.post).toHaveBeenCalledWith(
+                    '/api/v1/manage_media/migrate_paths',
+                    { tokens: ['a', 'b'] },
+                    { headers: { 'X-CSRFToken': 'tok' } }
+                );
+                expect(mockedAxios.delete).not.toHaveBeenCalled();
+                const message = container.querySelector('.message.success')?.textContent || '';
+                expect(message).toContain('2 media queued for path migration');
+                expect(message).toContain('1 not found.');
+                expect(rowCheckboxes(container).every((c) => !c.checked)).toBe(true);
+                unmount();
+            });
+
+            test('Bulk failure shows the server detail', async () => {
+                mockedAxios.get.mockResolvedValueOnce({ data: { count: 1, results: [mediaItem('a')] } } as any);
+                mockedAxios.post.mockRejectedValueOnce({
+                    response: { status: 403, data: { detail: 'bad permissions' } },
+                });
+                const { container, unmount } = await renderList({
+                    requestUrl: '/api/v1/manage_media',
+                    manageType: 'media',
+                });
+                const options = container.querySelector('.manage-items-options') as HTMLElement;
+                click(container.querySelector('.manage-item-header input'));
+                changeValue(options.querySelector('select'), 'migrate_paths');
+                click(findByText(options, 'button', 'Apply'));
+                click(options.querySelector('.proceed-profile-removal'));
+                await flush();
+                expect(container.querySelector('.message.error')?.textContent).toBe('bad permissions');
+                unmount();
+            });
+
+            test('Single row checks eligibility, then migrates one media', async () => {
+                mockedAxios.get
+                    .mockResolvedValueOnce({ data: { count: 1, results: [mediaItem('a')] } } as any)
+                    .mockResolvedValueOnce({
+                        data: { friendly_token: 'a', eligible: true, already_migrated: false, reason: '' },
+                    } as any);
+                mockedAxios.post.mockResolvedValueOnce({
+                    status: 200,
+                    data: { friendly_token: 'a', status: 'migrated', moved: 4, removed: 4 },
+                } as any);
+                const { container, unmount } = await renderList({
+                    requestUrl: '/api/v1/manage_media',
+                    manageType: 'media',
+                });
+                click(container.querySelector(rowActions + ' .mi-migrate-paths'));
+                await flush();
+                expect(mockedAxios.get).toHaveBeenLastCalledWith('/api/v1/manage_media/a/migrate_paths');
+                click(container.querySelector(rowActions + ' .proceed-path-migration'));
+                await flush();
+                expect(mockedAxios.post).toHaveBeenCalledWith(
+                    '/api/v1/manage_media/a/migrate_paths',
+                    {},
+                    { headers: { 'X-CSRFToken': expect.any(String) } }
+                );
+                expect(container.querySelector('.message.success')?.textContent).toBe('Paths migrated. Files moved: 4');
+                unmount();
+            });
+
+            test('Single row that is not eligible shows the reason and cannot proceed', async () => {
+                mockedAxios.get
+                    .mockResolvedValueOnce({ data: { count: 1, results: [mediaItem('a')] } } as any)
+                    .mockResolvedValueOnce({
+                        data: { eligible: false, already_migrated: false, reason: 'encoding 3 is running' },
+                    } as any);
+                const { container, unmount } = await renderList({
+                    requestUrl: '/api/v1/manage_media',
+                    manageType: 'media',
+                });
+                click(container.querySelector(rowActions + ' .mi-migrate-paths'));
+                await flush();
+                expect(container.querySelector(rowActions + ' .popup-message-main')?.textContent).toContain(
+                    'Cannot migrate now: encoding 3 is running'
+                );
+                expect(container.querySelector(rowActions + ' .proceed-path-migration')).toBeNull();
+                unmount();
+            });
+
+            test('Single row conflict reports the verification failure reason', async () => {
+                mockedAxios.get
+                    .mockResolvedValueOnce({ data: { count: 1, results: [mediaItem('a')] } } as any)
+                    .mockResolvedValueOnce({ data: { eligible: true, already_migrated: false, reason: '' } } as any);
+                mockedAxios.post.mockRejectedValueOnce({
+                    response: { status: 409, data: { status: 'failed', reason: 'checksum mismatch on source.mp4' } },
+                });
+                const { container, unmount } = await renderList({
+                    requestUrl: '/api/v1/manage_media',
+                    manageType: 'media',
+                });
+                click(container.querySelector(rowActions + ' .mi-migrate-paths'));
+                await flush();
+                click(container.querySelector(rowActions + ' .proceed-path-migration'));
+                await flush();
+                expect(container.querySelector('.message.error')?.textContent).toBe('checksum mismatch on source.mp4');
+                unmount();
+            });
+
+            test('Not offered outside managers: an editor, or a non-media table', async () => {
+                mockedAxios.get.mockResolvedValueOnce({ data: { count: 1, results: [mediaItem('a')] } } as any);
+                // an editor can open Manage media (manageMedia) but is not a manager (manageUsers)
+                const editor = renderIntoContainer(
+                    <UserContext.Provider value={{ userCan: { manageMedia: true, manageUsers: false } } as any}>
+                        <ManageItemList requestUrl="/api/v1/manage_media" manageType="media" />
+                    </UserContext.Provider>
+                );
+                await flush();
+                expect(editor.container.querySelector('.manage-media-item .actions')).not.toBeNull();
+                expect(editor.container.querySelector('.mi-migrate-paths')).toBeNull();
+                expect(editor.container.querySelector('option[value="migrate_paths"]')).toBeNull();
+                editor.unmount();
+
+                mockedAxios.get.mockResolvedValueOnce({
+                    data: {
+                        count: 1,
+                        results: [{ uid: 'c1', text: 'hi', author_name: 'Ann', add_date: '2024-01-02T03:04:05' }],
+                    },
+                } as any);
+                const comments = await renderList({
+                    requestUrl: '/api/v1/manage_comments',
+                    manageType: 'comments',
+                });
+                expect(comments.container.querySelector('option[value="migrate_paths"]')).toBeNull();
+                comments.unmount();
+            });
         });
 
         test('Users list shows stored message, add user form, and derived columns', async () => {

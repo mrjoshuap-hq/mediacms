@@ -37,6 +37,7 @@ For the full stack of MediaCMS itself, see [Architecture](architecture.md).
 
     | Folder | Reader |
     |--------|--------|
+    | `docs/en/releases/` | Operators comparing upstream ≤v9 with fork 10 stable/beta; upgrade tips |
     | `docs/en/getting-started/` | New installers |
     | `docs/en/roles/` | One role |
     | `docs/en/guides/user/`, `operator/`, `admin/`, `developer/` | One guide set |

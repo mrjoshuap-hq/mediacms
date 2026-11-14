@@ -26,6 +26,10 @@ MODERATION_MEDIA_ACTIONS = (
     ("original_deleted", "Original deleted"),
     ("metadata_refresh", "Metadata refreshed"),
     ("integrity_warning", "Integrity warning"),
+    ("fs_imported", "Filesystem imported"),
+    ("fs_original_gone", "Filesystem original gone"),
+    ("fs_pruned", "Filesystem pruned"),
+    ("path_migrated", "Path migrated"),
 )
 
 USER_MEDIA_ACTIONS = PUBLIC_USER_MEDIA_ACTIONS + MODERATION_MEDIA_ACTIONS

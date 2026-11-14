@@ -8,7 +8,6 @@ from unittest import mock
 import m3u8
 import pytest
 from celery.exceptions import Retry
-from django.conf import settings
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -752,7 +751,7 @@ class CreateHlsTest(TestCase):
             self.assertFalse(tasks.create_hls(self.video.friendly_token, encoding.id))
         self.video.refresh_from_db()
         self.assertEqual(self.video.hls_file, "")
-        self.assertFalse(os.path.isdir(os.path.join(settings.HLS_DIR, self.video.uid.hex)))
+        self.assertFalse(os.path.isdir(tasks.hls_permanent_dir(self.video.uid)))
 
     def test_hls_is_rebuilt_in_place_when_it_already_exists(self):
         encoding = self.add_success_encoding("h264-240", "pipeline_240.mp4")
@@ -772,7 +771,8 @@ class CreateHlsTest(TestCase):
         self.video.refresh_from_db()
         self.assertEqual(self.video.hls_file, first)
         uid = self.video.uid.hex
-        self.assertEqual([name for name in os.listdir(settings.HLS_DIR) if name.startswith(uid)], [uid])
+        shard_dir = os.path.dirname(tasks.hls_permanent_dir(self.video.uid))
+        self.assertEqual([name for name in os.listdir(shard_dir) if name.startswith(uid)], [uid])
         self.assertIn("240_playlist", self.video.hls_info)
 
     def test_incremental_hls_passes_only_the_new_encoding_to_bento(self):
@@ -789,7 +789,7 @@ class CreateHlsTest(TestCase):
 
         self.assertEqual(calls, [[encoding.media_file.path]])
         self.video.refresh_from_db()
-        permanent = os.path.join(settings.HLS_DIR, self.video.uid.hex)
+        permanent = tasks.hls_permanent_dir(self.video.uid)
         self.assertEqual(self.video.hls_file, os.path.join(permanent, "master.m3u8"))
         self.assertTrue(os.path.isdir(os.path.join(permanent, "media-240")))
         self.assertIn("240_playlist", self.video.hls_info)
@@ -808,7 +808,7 @@ class CreateHlsTest(TestCase):
             self.assertTrue(tasks.create_hls(self.video.friendly_token, first.id))
             self.assertTrue(tasks.create_hls(self.video.friendly_token, second.id))
 
-        permanent = os.path.join(settings.HLS_DIR, self.video.uid.hex)
+        permanent = tasks.hls_permanent_dir(self.video.uid)
         self.assertTrue(os.path.isdir(os.path.join(permanent, "media-240")))
         self.assertTrue(os.path.isdir(os.path.join(permanent, "media-480")))
         master = m3u8.load(os.path.join(permanent, "master.m3u8"))
@@ -820,7 +820,7 @@ class CreateHlsTest(TestCase):
 
     def test_repackaging_the_same_profile_replaces_the_variant(self):
         encoding = self.add_success_encoding("h264-240", "replace_240.mp4")
-        permanent = os.path.join(settings.HLS_DIR, self.video.uid.hex)
+        permanent = tasks.hls_permanent_dir(self.video.uid)
         marker_path = os.path.join(permanent, "media-240", "marker.txt")
 
         def fake_run(media_files, output_dir, marker="first", bandwidth=240000):
@@ -859,7 +859,7 @@ class CreateHlsTest(TestCase):
         finally:
             cache.delete(lock_key)
 
-        self.assertFalse(os.path.isdir(os.path.join(settings.HLS_DIR, self.video.uid.hex)))
+        self.assertFalse(os.path.isdir(tasks.hls_permanent_dir(self.video.uid)))
 
     def test_full_rebuild_passes_all_successful_encodings_to_bento(self):
         first = self.add_success_encoding("h264-240", "full_240.mp4")
@@ -897,7 +897,7 @@ class CreateHlsTest(TestCase):
         encoding = self.add_success_encoding("h264-240", "bento_240.mp4")
         self.assertTrue(tasks.create_hls(self.video.friendly_token, encoding.id))
 
-        permanent = os.path.join(settings.HLS_DIR, self.video.uid.hex)
+        permanent = tasks.hls_permanent_dir(self.video.uid)
         self.video.refresh_from_db()
         self.assertEqual(self.video.hls_file, os.path.join(permanent, "master.m3u8"))
         self.assertTrue(os.path.exists(self.video.hls_file))

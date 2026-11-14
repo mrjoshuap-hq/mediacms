@@ -20,6 +20,8 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from files import helpers
+from files.integrity import successful_playable_encodings_q
+from files.methods import record_moderation_action
 from files.models import (
     Category,
     EncodeProfile,
@@ -32,7 +34,11 @@ from files.models import (
     Subtitle,
     Tag,
 )
-from files.models.utils import PREVIEW_PROFILE_NAME, generate_uid
+from files.models.utils import (
+    PREVIEW_PROFILE_NAME,
+    generate_uid,
+    original_media_file_path,
+)
 from lti.models import LTIPlatform, LTIResourceLink
 from rbac.models import RBACGroup, RBACMembership
 from users.models import User
@@ -45,8 +51,14 @@ from .compose import (
     pick_flavor_for_width,
     stream_area,
 )
-from .models import MigrationRecord, MigrationService
+from .models import (
+    FS_ORIGINAL_GONE_MARKER,
+    FS_PRUNED_MARKER,
+    MigrationRecord,
+    MigrationService,
+)
 from .providers import get_provider
+from .providers.filesystem import FilesystemError, place_original
 from .providers.kaltura import (
     MEDIA_TYPE_IMAGE,
     ancestor_categories,
@@ -1563,18 +1575,237 @@ def import_media_entry(service, provider, source_id):
     return media
 
 
+class ReconcileAborted(Exception):
+    """The mount cannot be trusted to say what is missing, so nothing may be pruned"""
+
+
+def filesystem_actor(service):
+    """Who a filesystem audit event is credited to: whoever started the migration, else nobody"""
+    username = service.get_options().get("initiated_by")
+    return User.objects.filter(username=username).first() if username else None
+
+
+def filesystem_owner(service):
+    """The one account that owns everything this migration imports.
+
+    Required, never inferred: unlike fallback_owner this does not reach for whoever started
+    the run or for "admin", since that would quietly hand a library to the wrong person.
+    """
+    named = str(service.get_options().get("fallback_username") or "").strip()
+    if not named:
+        raise ValueError("This migration has no owner: choose the MediaCMS user who owns the imported media")
+    owner = User.objects.filter(username=named).first()
+    if owner is None:
+        raise ValueError(f"The owner '{named}' is not a MediaCMS user")
+    return owner
+
+
+def filesystem_label(service, source_id):
+    return f"{service.source_system}:{source_id}"[:300]
+
+
+def import_filesystem_category(service, provider, source_id):
+    """Create or reuse the category for one folder that holds media"""
+    existing = MigrationRecord.objects.filter(service=service, object_type="category", source_id=str(source_id), status__in=("success", "skipped")).exclude(target_id=None).first()
+    if existing is not None and existing.target() is not None:
+        return existing.target()
+
+    payload = provider.fetch_category(source_id)
+    owner = filesystem_owner(service)
+    with transaction.atomic():
+        taken = set(Category.objects.values_list("title", flat=True))
+        title = unique_category_title(payload["name"][:CATEGORY_TITLE_MAX], payload["parent"], taken)
+        # no description: it is public, and a folder path would show the library layout
+        category = Category.objects.create(title=title, user=owner, is_global=True)
+        record(service, "category", source_id, "success", f"created category {category.title}", target=category)
+    return category
+
+
+def get_or_import_filesystem_category(service, provider, source_id):
+    row = MigrationRecord.objects.filter(service=service, object_type="category", source_id=str(source_id), status__in=("success", "skipped")).exclude(target_id=None).first()
+    if row is not None and row.target() is not None:
+        return row.target()
+    try:
+        return import_filesystem_category(service, provider, str(source_id))
+    except Exception as exc:  # noqa: BLE001 - a bad category must not lose the media
+        service.append_log(f"could not import folder {source_id} as a category: {exc}")
+        return None
+
+
+def import_filesystem_caption(service, media, caption):
+    """Attach one sidecar caption. A bad one is logged and the media is kept."""
+    code = caption["language"]
+    subtitle = None
+    try:
+        language, _created = Language.objects.get_or_create(code=code, defaults={"title": LANG_INFO.get(code, {}).get("name") or code})
+        subtitle = Subtitle(media=media, language=language, user=media.user)
+        with open(caption["path"], "rb") as handle:
+            subtitle.subtitle_file.save(content=File(handle), name=f"{code}{caption['extension']}", save=False)
+        subtitle.save()
+        if caption["extension"] == ".srt":
+            subtitle.convert_to_srt()
+        record(service, "caption", f"{media.friendly_token}-{code}", "success", f"attached {code} caption to media {media.id}", target=subtitle)
+        return subtitle
+    except Exception as exc:  # noqa: BLE001 - a bad caption must not lose the media
+        if subtitle is not None and subtitle.pk:
+            subtitle.delete()
+        service.append_log(f"file {media.friendly_token}: {code} caption failed: {exc}")
+        return None
+
+
+def import_filesystem_media(service, provider, source_id):
+    """Import one file from the mount, or return the Media it already became.
+
+    The original is placed at its sharded MediaCMS path first (link or copy for ingest, a
+    symlink for preserve) and only then does the Media row appear, so media_init, which
+    runs inside that save, always finds the file. The title is always set here: a blank
+    one would become the stored name, "source.ext".
+    """
+    options = service.get_options()
+    source_id = str(source_id)
+
+    existing = MigrationRecord.objects.filter(service=service, object_type="media", source_id=source_id).first()
+    previous = existing.target() if existing else None
+    if existing and existing.status in ("success", "skipped") and previous is not None:
+        return previous
+    if previous is not None:
+        service.append_log(f"file {source_id}: discarding an incomplete media from an earlier attempt")
+        previous.delete()
+
+    owner = filesystem_owner(service)
+    mode = options.get("storage_mode") or "ingest"
+    payload = provider.fetch_media(source_id)
+
+    media = Media(user=owner, title=(payload["title"] or payload["filename"])[:100], description="")
+    # normal media_init: thumbnails, sprites, encodes and HLS follow DO_NOT_TRANSCODE_VIDEO only
+    media._skip_admin_notification = True
+
+    relative = original_media_file_path(media, payload["filename"])
+    destination = os.path.join(settings.MEDIA_ROOT, relative)
+    placement = place_original(payload["path"], destination, mode)
+
+    try:
+        media.media_file.name = relative
+        media.save()
+    except Exception as exc:
+        if media.pk:
+            # the row exists: keep a failed record pointing at it so the retry discards it
+            record(service, "media", source_id, "failed", f"{type(exc).__name__}: {exc}", target=media)
+        else:
+            helpers.rm_file(destination)
+        raise
+
+    media.refresh_from_db()
+    record(service, "media", source_id, "success", f"imported '{media.title}' as media {media.id} ({placement})", target=media)
+
+    if options.get("categories_from_folders", True) and payload["folder"]:
+        category = get_or_import_filesystem_category(service, provider, payload["folder"])
+        if category is not None:
+            media.category.add(category)
+
+    for caption in payload["captions"]:
+        import_filesystem_caption(service, media, caption)
+
+    record_moderation_action(filesystem_actor(service), media, "fs_imported", extra_info=f"{filesystem_label(service, source_id)} ({placement})")
+    return media
+
+
+def list_reconcile_page(service, provider, cursor, page_size):
+    """Prior imports whose file is gone from the mount, a page at a time.
+
+    A mount that has dropped out, or lost its contents, looks exactly like a library that
+    was emptied, and acting on that would delete everything. So before the first page the
+    mount must be readable and still hold media; otherwise the whole phase is refused.
+    """
+    cursor = dict(cursor or {})
+    prior = MigrationRecord.objects.filter(service=service, object_type="media", status="success").exclude(log__startswith=FS_ORIGINAL_GONE_MARKER)
+
+    if not cursor.get("verified"):
+        if not prior.exists():
+            return [], {}
+        try:
+            provider.base_path()
+            populated = provider.has_media()
+        except FilesystemError as exc:
+            raise ReconcileAborted(f"the mount cannot be read ({exc})")
+        if not populated:
+            raise ReconcileAborted(f"the mount holds no media but {prior.count()} imported item(s) came from it; it may be unmounted or emptied")
+
+    after_id = cursor.get("after_id") or 0
+    missing = []
+    for row in prior.filter(id__gt=after_id).order_by("id").iterator(chunk_size=500):
+        after_id = row.id
+        if provider.within_selection(row.source_id) and not provider.source_exists(row.source_id):
+            missing.append(row.source_id)
+            if len(missing) >= page_size:
+                break
+    return missing, {"verified": True, "after_id": after_id}
+
+
+def reconcile_filesystem_item(service, provider, source_id):
+    """Apply the prune policy to one imported file that is no longer on the mount.
+
+    No playable encoding: the original was all there was, so the Media goes (only
+    MediaCMS-side paths: a preserve symlink is unlinked, never followed). Otherwise it is
+    kept and the audit trail says its original is gone.
+    """
+    source_id = str(source_id)
+    row = MigrationRecord.objects.filter(service=service, object_type="media", source_id=source_id, status="success").first()
+    if row is None or (row.log or "").startswith(FS_ORIGINAL_GONE_MARKER):
+        return None
+    if provider.source_exists(source_id):
+        return None
+
+    media = row.target()
+    if media is None:
+        row.delete()
+        return None
+
+    if media.encodings.filter(status__in=("pending", "running")).exists():
+        service.append_log(f"file {source_id}: source is gone but an encode is still running, deciding on the next run")
+        return None
+
+    actor = filesystem_actor(service)
+    label = filesystem_label(service, source_id)
+    playable = media.encodings.filter(successful_playable_encodings_q(), status="success").exists()
+
+    if not playable:
+        token = media.friendly_token
+        # recorded first, as the plan asks; the row cascades away with the Media, so the
+        # lasting trail is the skipped MigrationRecord written below and the run log
+        record_moderation_action(actor, media, "fs_pruned", extra_info=f"{label}: source removed, no playable encodings")
+        media.delete()
+        record(service, "media", source_id, "skipped", f"{FS_PRUNED_MARKER}: source removed, media {token} deleted (no playable encodings)", target=None)
+        service.append_log(f"file {source_id}: source removed, deleted media {token} (no playable encodings)")
+        return "pruned"
+
+    try:
+        original = media.media_file.path if media.media_file else None
+    except (ValueError, NotImplementedError):
+        original = None
+    if original and os.path.islink(original) and not os.path.exists(original):
+        # a dangling preserve link: drop the MediaCMS side only, it never touches the archive
+        helpers.rm_file(original)
+
+    record_moderation_action(actor, media, "fs_original_gone", extra_info=f"{label}: source removed, media kept (has playable encodings)")
+    record(service, "media", source_id, "success", f"{FS_ORIGINAL_GONE_MARKER}: source removed, media {media.friendly_token} kept (has playable encodings)", target=media)
+    service.append_log(f"file {source_id}: source removed, kept media {media.friendly_token} (has playable encodings)")
+    return "kept"
+
+
 PHASES = ["users", "groups", "categories", "media", "playlists"]
 
-PHASE_OPTION = {"users": "migrate_all_users", "groups": "migrate_groups", "categories": None, "media": None, "playlists": "migrate_playlists"}
+PHASE_OPTION = {"users": "migrate_all_users", "groups": "migrate_groups", "categories": None, "media": None, "playlists": "migrate_playlists", "reconcile": None}
 
-RECORD_TYPE = {"users": "user", "groups": "group", "categories": "category", "media": "media", "playlists": "playlist"}
+RECORD_TYPE = {"users": "user", "groups": "group", "categories": "category", "media": "media", "playlists": "playlist", "reconcile": "media"}
 
 IMPORTERS = {"users": import_user, "groups": import_group, "categories": import_category, "media": import_media_entry, "playlists": import_playlist}
 
 
-PROVIDER_PHASES = {"youtube": ["media"], "panopto": ["users", "categories", "media", "playlists"]}
+PROVIDER_PHASES = {"youtube": ["media"], "panopto": ["users", "categories", "media", "playlists"], "filesystem": ["categories", "media", "reconcile"]}
 
 PROVIDER_IMPORTERS = {
+    "filesystem": {"categories": import_filesystem_category, "media": import_filesystem_media, "reconcile": reconcile_filesystem_item},
     "youtube": {"media": import_youtube_video},
     "panopto": {"users": import_panopto_user, "categories": import_panopto_folder, "media": import_panopto_session, "playlists": import_panopto_playlist},
 }
@@ -1613,12 +1844,28 @@ def first_enabled_phase(service, phase):
     return "done"
 
 
+def finish_media_phase(service, reason):
+    """End the media phase early. A source with a reconcile phase still owes it a run.
+
+    Reconcile only looks at files that are gone, so a cap on how many new files to take
+    must not also cancel it; every other source simply ends here as it always has.
+    """
+    if "reconcile" in phases_for(service):
+        service.append_log(f"{reason}, moving on to reconcile")
+        service.cursor = {"phase": "reconcile"}
+        service.save(update_fields=["cursor"])
+        run_migration.apply_async(args=[service.pk], countdown=1)
+        return True
+    finish_migration(service, "success", f"{reason}, migration finished")
+    return True
+
+
 def _media_limit_reached(service):
     """Whether max_items has been hit. Applies to the media phase only."""
     max_items = service.get_options().get("max_items")
     if not max_items:
         return False
-    handled = MigrationRecord.objects.filter(service=service, object_type="media").exclude(status="failed").count()
+    handled = MigrationRecord.objects.filter(service=service, object_type="media").exclude(status="failed").exclude(log__startswith=FS_PRUNED_MARKER).count()
     return handled >= int(max_items)
 
 
@@ -1845,14 +2092,21 @@ def run_migration(service_id):
         return True
 
     if phase == "media" and _media_limit_reached(service):
-        finish_migration(service, "success", "max_items reached, migration finished")
-        return True
+        return finish_media_phase(service, "max_items reached")
 
     provider = get_provider(service)
     page_size = getattr(settings, "MIGRATION_PAGE_SIZE", 10)
 
     try:
-        source_ids, next_cursor = provider.list_page(phase, cursor, page_size)
+        if phase == "reconcile":
+            source_ids, next_cursor = list_reconcile_page(service, provider, cursor, page_size)
+        else:
+            source_ids, next_cursor = provider.list_page(phase, cursor, page_size)
+    except ReconcileAborted as exc:
+        # nothing has been touched: the run ends in error so it is seen, and a re-run retries
+        logger.warning("migration %s: reconcile aborted: %s", service_id, exc)
+        finish_migration(service, "error", f"reconcile aborted, nothing was pruned: {exc}")
+        return False
     except Exception as exc:  # noqa: BLE001 - a listing failure ends the run, it is not per item
         logger.exception("migration %s: listing %s failed", service_id, phase)
         finish_migration(service, "error", f"could not list {phase}: {exc}")
@@ -1861,11 +2115,10 @@ def run_migration(service_id):
     if phase == "media":
         max_items = service.get_options().get("max_items")
         if max_items:
-            handled = MigrationRecord.objects.filter(service=service, object_type="media").exclude(status="failed").count()
+            handled = MigrationRecord.objects.filter(service=service, object_type="media").exclude(status="failed").exclude(log__startswith=FS_PRUNED_MARKER).count()
             remaining = int(max_items) - handled
             if remaining <= 0:
-                finish_migration(service, "success", "max_items reached, migration finished")
-                return True
+                return finish_media_phase(service, "max_items reached")
             if len(source_ids) > remaining:
                 service.append_log(f"max_items: trimming this page to {remaining} entries")
                 source_ids = source_ids[:remaining]
@@ -1902,8 +2155,21 @@ def migrate_item(service_id, phase, source_id):
     service = MigrationService.objects.get(pk=service_id)
     object_type = RECORD_TYPE[phase]
 
+    if phase == "reconcile":
+        # not an import: it acts on a record that is already a success, and a failure here
+        # must never overwrite that record, so it only goes to the log
+        try:
+            outcome = importer_for(service, phase)(service, get_provider(service), source_id)
+            return outcome or "skipped"
+        except Exception as exc:  # noqa: BLE001 - one bad item must not end the migration
+            logger.exception("migration %s: reconcile %s failed", service_id, source_id)
+            service.append_log(f"reconcile {source_id} failed: {exc}")
+            return "failed"
+
     existing = MigrationRecord.objects.filter(service=service, object_type=object_type, source_id=source_id).first()
-    if existing and existing.status in ("success", "skipped"):
+    # a library file whose Media is gone (deleted, or pruned and now back) is imported again
+    target_gone = service.provider == "filesystem" and object_type == "media" and existing is not None and existing.target() is None
+    if existing and existing.status in ("success", "skipped") and not target_gone:
         logger.info("%s already %s in this migration, skipping", log_prefix, existing.status)
         return "skipped"
     if existing:

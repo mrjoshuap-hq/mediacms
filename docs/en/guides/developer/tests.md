@@ -8,13 +8,17 @@ Backend tests run inside the `web` container. They use `cms/test_settings.py`. F
 
 ```mermaid
 flowchart LR
-    make["make test"] --> web["web container: pytest"]
+    make["make test"] --> lint["make lint"]
+    make --> backend["make test-backend"]
+    make --> frontend["make test-frontend"]
+    lint --> precommit["pre-commit run --all-files"]
+    backend --> web["web container: pytest"]
     web --> settings["cms/test_settings.py"]
     settings --> eager["CELERY_TASK_ALWAYS_EAGER = True"]
     settings --> tmpmedia["Temporary MEDIA_ROOT"]
     web --> conftest["conftest.py: network block, cache clear"]
     web --> testdb[("PostgreSQL test database")]
-    makefe["make test-frontend"] --> fe["frontend container: Jest"]
+    frontend --> fe["frontend container: Jest"]
     fe --> jsdom["jsdom test environment"]
 ```
 
@@ -33,10 +37,10 @@ For the full stack, see [Architecture](architecture.md).
 ### Run all tests in parallel
 
 ```bash
-make test
+make test-backend
 ```
 
-This runs:
+`make test` runs `make lint` (pre-commit), then backend and frontend tests. Backend only:
 
 ```bash
 docker compose -f docker-compose-dev.yaml exec --env TESTING=True -T web pytest -n auto
@@ -198,4 +202,4 @@ When a product feature is expected but the code is stubbed or missing, add a war
 2. Do not call an outside host.
 3. Do not start real Celery workers. Eager mode runs the tasks.
 4. For stubbed product behavior, use `@unimplemented` instead of a failing assertion.
-5. Run the new test alone, then run `make test`.
+5. Run the new test alone, then run `make test-backend` (or `make test` for backend and frontend).

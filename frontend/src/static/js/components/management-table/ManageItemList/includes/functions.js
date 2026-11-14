@@ -15,6 +15,8 @@ function useManageItem(props) {
         onCheckRow: props.onCheckRow,
         selectedRow: props.selectedRow,
         onProceedRemoval: props.onProceedRemoval,
+        onMigratePaths: props.onMigratePaths,
+        onCheckMigratePaths: props.onCheckMigratePaths,
         hideDeleteAction: props.hideDeleteAction,
         onUserUpdate: props.onUserUpdate,
         setMessage: props.setMessage,
@@ -107,6 +109,8 @@ function ListManageItem(props) {
         onProceedRemoval: props.onProceedRemoval,
         onUserUpdate: props.onUserUpdate,
         setMessage: props.setMessage,
+        onMigratePaths: props.onMigratePaths,
+        onCheckMigratePaths: props.onCheckMigratePaths,
     };
 
     if ('media' === props.type) {
@@ -177,6 +181,8 @@ export function renderManageItems(items, props) {
                 type={props.manageType}
                 onCheckRow={props.onRowCheck}
                 onProceedRemoval={props.onDelete}
+                onMigratePaths={props.onMigratePaths}
+                onCheckMigratePaths={props.onCheckMigratePaths}
                 selectedItems={props.selectedItems}
             />
         )),

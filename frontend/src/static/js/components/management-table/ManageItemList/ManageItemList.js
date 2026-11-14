@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import urlParse from 'url-parse';
 import { deleteRequest, csrfToken, takeRememberedMessage, rememberMessage } from '../../../utils/helpers/';
-import { usePopup } from '../../../utils/hooks/';
+import { usePopup, useUser } from '../../../utils/hooks/';
+import { checkMediaPaths, migrateMediaPaths, migrateMediaPathsBulk } from '../../../utils/api/managePaths.js';
 import { PopupMain } from '../../_shared';
 import { PendingItemsList } from '../../item-list/PendingItemsList.jsx';
 import { renderManageItems } from './includes/functions';
@@ -305,7 +306,11 @@ function BulkActions(props) {
     }
 
     function onClickProceed() {
-        if ('function' === typeof props.onProceedRemoval) {
+        if ('migrate_paths' === selectedBulkAction) {
+            if ('function' === typeof props.onProceedMigratePaths) {
+                props.onProceedMigratePaths();
+            }
+        } else if ('function' === typeof props.onProceedRemoval) {
             props.onProceedRemoval();
         }
 
@@ -320,11 +325,16 @@ function BulkActions(props) {
         setSelectedItemsSize(props.selectedItemsSize);
     }, [props.selectedItemsSize]);
 
+    const migrating = 'migrate_paths' === selectedBulkAction;
+
     return (
         <div className="manage-items-bulk-action">
             <select value={selectedBulkAction} onChange={onBulkActionSelect}>
                 <option value="">Bulk actions</option>
                 <option value="delete">Delete selected</option>
+                {props.canMigratePaths ? (
+                    <option value="migrate_paths">{translateString('Migrate paths (sharded layout)')}</option>
+                ) : null}
             </select>
 
             {!selectedItemsSize || !selectedBulkAction ? null : (
@@ -336,8 +346,16 @@ function BulkActions(props) {
             <PopupContent contentRef={popupContentRef}>
                 <PopupMain>
                     <div className="popup-message">
-                        <span className="popup-message-title">Bulk removal</span>
-                        <span className="popup-message-main">You're willing to remove selected items permanently?</span>
+                        <span className="popup-message-title">
+                            {migrating ? translateString('Bulk path migration') : 'Bulk removal'}
+                        </span>
+                        <span className="popup-message-main">
+                            {migrating
+                                ? translateString(
+                                      'Queue the selected media to move their files to the sharded layout? Each item is copied, verified and switched over, and the old files are deleted only after every check passes. An item that fails stays as it is.'
+                                  )
+                                : "You're willing to remove selected items permanently?"}
+                        </span>
                     </div>
                     <hr />
                     <span className="popup-message-bottom">
@@ -357,7 +375,12 @@ function BulkActions(props) {
 function ManageItemsOptions(props) {
     return (
         <div className={props.className}>
-            <BulkActions selectedItemsSize={props.items.length} onProceedRemoval={props.onProceedRemoval} />
+            <BulkActions
+                selectedItemsSize={props.items.length}
+                onProceedRemoval={props.onProceedRemoval}
+                canMigratePaths={props.canMigratePaths}
+                onProceedMigratePaths={props.onProceedMigratePaths}
+            />
             {1 === props.pagesSize ? null : (
                 <div className="manage-items-pagination">
                     <PaginationButtons
@@ -576,6 +599,14 @@ export function ManageItemList(rawProps) {
 
     const [message, setMessage] = useState({ type: '', text: '' });
 
+    // path migration is for managers and superusers: the same people who can open Manage users
+    const user = useUser();
+    const canMigratePaths = 'media' === props.manageType && !!(user && user.userCan && user.userCan.manageUsers);
+
+    function manageApiUrl() {
+        return String(props.requestUrl || '').split('?')[0];
+    }
+
     useEffect(() => {
         const storedMessage = takeRememberedMessage();
         if (storedMessage) {
@@ -623,6 +654,63 @@ export function ManageItemList(rawProps) {
 
     function onBulkItemsRemoval() {
         deleteSelectedItems();
+    }
+
+    function apiErrorText(error, fallback) {
+        const data = error && error.response && error.response.data;
+        return (data && data.detail) || translateString(fallback);
+    }
+
+    function onBulkMigratePaths() {
+        migrateMediaPathsBulk(manageApiUrl(), selectedItems)
+            .then((response) => {
+                const data = response.data || {};
+                const unknown = (data.unknown || []).length;
+                setSelectedItems([]);
+                setSelectedAllItems(false);
+                setMessage({
+                    type: 'success',
+                    text:
+                        data.queued +
+                        ' ' +
+                        translateString(
+                            'media queued for path migration. Check the media later; items that fail keep their old layout.'
+                        ) +
+                        (unknown ? ' ' + unknown + ' ' + translateString('not found.') : ''),
+                });
+            })
+            .catch((error) =>
+                setMessage({ type: 'error', text: apiErrorText(error, 'Could not queue the path migration.') })
+            );
+    }
+
+    function onCheckRowPaths(token) {
+        return checkMediaPaths(manageApiUrl(), token).then((response) => response.data || {});
+    }
+
+    function onMigrateRowPaths(token) {
+        return migrateMediaPaths(manageApiUrl(), token)
+            .then((response) => {
+                const data = response.data || {};
+                setMessage({
+                    type: 'success',
+                    text:
+                        'skipped' === data.status
+                            ? translateString('Already on the sharded layout.')
+                            : translateString('Paths migrated. Files moved:') + ' ' + (data.moved || 0),
+                });
+                return response;
+            })
+            .catch((error) => {
+                const data = error && error.response && error.response.data;
+                setMessage({
+                    type: 'error',
+                    text:
+                        (data && data.reason) ||
+                        apiErrorText(error, 'Path migration failed. The media keeps its old layout.'),
+                });
+                return Promise.reject(error);
+            });
     }
 
     function onAllRowsCheck(selectedAllRows, tableType) {
@@ -781,6 +869,8 @@ export function ManageItemList(rawProps) {
                         items={selectedItems}
                         pagesSize={listHandler.totalPages()}
                         onProceedRemoval={onBulkItemsRemoval}
+                        canMigratePaths={canMigratePaths}
+                        onProceedMigratePaths={onBulkMigratePaths}
                     />
 
                     <div ref={itemsListWrapperRef} className="items-list-wrap">
@@ -792,6 +882,8 @@ export function ManageItemList(rawProps) {
                                 selectedItems: selectedItems,
                                 selectedAllItems: selectedAllItems,
                                 onDelete: deleteItem,
+                                onMigratePaths: canMigratePaths ? onMigrateRowPaths : undefined,
+                                onCheckMigratePaths: canMigratePaths ? onCheckRowPaths : undefined,
                                 onUserUpdate: refreshList,
                                 setMessage: setMessage,
                             })}
@@ -807,6 +899,8 @@ export function ManageItemList(rawProps) {
                         items={selectedItems}
                         pagesSize={listHandler.totalPages()}
                         onProceedRemoval={onBulkItemsRemoval}
+                        canMigratePaths={canMigratePaths}
+                        onProceedMigratePaths={onBulkMigratePaths}
                     />
                 </>
             )}

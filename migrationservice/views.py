@@ -15,6 +15,7 @@ from users.models import User
 
 from .models import MigrationRecord, MigrationService
 from .providers import get_provider, get_provider_class
+from .providers.filesystem import list_mounts
 from .serializers import MigrationRecordSerializer, MigrationServiceSerializer
 from .tasks import (
     abort_migration,
@@ -158,6 +159,15 @@ class MigrationServiceViewSet(viewsets.ModelViewSet):
                 "timezone": str(timezone.get_current_timezone()),
             }
         )
+
+    @action(detail=False, methods=["get"], url_path="filesystem_mounts")
+    def filesystem_mounts(self, request):
+        """The library mounts a filesystem migration can name: directories under the import root.
+
+        Names only. The import root itself never leaves the server, and the form can offer
+        nothing but what is listed here.
+        """
+        return Response({"mounts": list_mounts()})
 
     @action(detail=False, methods=["get"], url_path="lti_platforms")
     def lti_platforms(self, request):

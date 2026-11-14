@@ -23,10 +23,7 @@ jest.mock('../../src/static/js/pages/Page', () => ({
 let listResultCount = 1;
 
 jest.mock('../../src/static/js/components/item-list/LazyLoadItemListAsync.jsx', () => ({
-    LazyLoadItemListAsync: (props: {
-        requestUrl?: string;
-        itemsCountCallback?: (n: number) => void;
-    }) => {
+    LazyLoadItemListAsync: (props: { requestUrl?: string; itemsCountCallback?: (n: number) => void }) => {
         useEffect(() => {
             props.itemsCountCallback?.(listResultCount);
         }, []);
@@ -34,10 +31,7 @@ jest.mock('../../src/static/js/components/item-list/LazyLoadItemListAsync.jsx', 
     },
 }));
 jest.mock('../../src/static/js/components/item-list/LazyLoadItemListAsync', () => ({
-    LazyLoadItemListAsync: (props: {
-        requestUrl?: string;
-        itemsCountCallback?: (n: number) => void;
-    }) => {
+    LazyLoadItemListAsync: (props: { requestUrl?: string; itemsCountCallback?: (n: number) => void }) => {
         useEffect(() => {
             props.itemsCountCallback?.(listResultCount);
         }, []);

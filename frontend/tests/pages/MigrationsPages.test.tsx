@@ -51,7 +51,15 @@ describe('pages/Migrations*', () => {
         controlMigration.mockResolvedValue({});
         deleteMigration.mockResolvedValue({});
         getMigration.mockResolvedValue({
-            data: { id: 7, name: 'Detail mig', provider: 'kaltura', status: 'pending', connection: {}, options: {}, totals: {} },
+            data: {
+                id: 7,
+                name: 'Detail mig',
+                provider: 'kaltura',
+                status: 'pending',
+                connection: {},
+                options: {},
+                totals: {},
+            },
         });
         getProgress.mockResolvedValue({ data: { totals: {} } });
         getRecords.mockResolvedValue({ data: { results: [], count: 0 } });

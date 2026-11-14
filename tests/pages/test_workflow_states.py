@@ -13,6 +13,7 @@ from files.tests.media_utils import SMALL_VIDEO
 def message_texts(response):
     return [str(message) for message in get_messages(response.wsgi_request)]
 
+
 MEDIA_LIST_URL = "/api/v1/media"
 
 

@@ -109,3 +109,7 @@ Portal roles apply to the whole portal. They are separate from RBAC roles.
 3. Select **More options**, then **Status info**, to read the state.
 4. Check the categories on the **Publish** tab.
 5. Check **Shared by me** on the profile of the owner for direct shares.
+
+## Access changes in this beta
+
+Permission behavior was aligned with this guide and the roles pages. Read [Permission access changes](../admin/permissions-changes.md) for the before and after table.

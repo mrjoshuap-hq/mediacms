@@ -93,7 +93,7 @@ describe('pages/Manage*', () => {
 
     test('ManageMediaPage removal success notifies', () => {
         const { container, unmount } = renderIntoContainer(<ManageMediaPage title="Manage media" />);
-        const listProps = (container.querySelector('.mock-manage-list') as any);
+        const listProps = container.querySelector('.mock-manage-list') as any;
         // Invoke removal callback if exposed via re-render path by calling page method through instance is hard;
         // assert PageActions mock is available for notifications used by the page.
         expect(PageActions.addNotification).toBeDefined();

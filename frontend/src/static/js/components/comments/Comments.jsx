@@ -139,6 +139,10 @@ function CommentForm(rawProps) {
         };
     });
 
+    if (!memberConfig.is.anonymous && !memberConfig.can.addComment) {
+        return null;
+    }
+
     return !memberConfig.is.anonymous ? (
         <div className="comments-form">
             <div className="comments-form-inner">

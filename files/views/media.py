@@ -1105,6 +1105,10 @@ class MediaDetail(APIView):
         Action is a POST variable, review and encode are implemented
         """
 
+        blocked = _pending_library_block(request.user)
+        if blocked:
+            return blocked
+
         media = self.get_object(friendly_token)
         if isinstance(media, Response):
             return media
@@ -1222,6 +1226,10 @@ class MediaDetail(APIView):
         if not (request.user.has_contributor_access_to_media(media) or is_mediacms_editor(request.user)):
             return Response({"detail": "not allowed"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # State changes require owner-level access (same as the publish page).
+        if "state" in request.data and not (request.user.has_owner_access_to_media(media) or is_mediacms_editor(request.user)):
+            return Response({"detail": "not allowed to change state"}, status=status.HTTP_400_BAD_REQUEST)
+
         serializer = MediaSerializer(media, data=request.data, context={"request": request})
         if serializer.is_valid():
             # Track changed fields before saving
@@ -1330,8 +1338,11 @@ class MediaActions(APIView):
     def get_object(self, friendly_token):
         try:
             media = Media.objects.select_related("user").prefetch_related("encodings__profile").get(friendly_token=friendly_token)
-            if media.state == "private" and self.request.user != media.user:
-                return Response({"detail": "media is private"}, status=status.HTTP_400_BAD_REQUEST)
+            if media.state == "private":
+                user = self.request.user
+                has_access = user.is_authenticated and (user.has_member_access_to_media(media) or is_mediacms_editor(user))
+                if not has_access:
+                    return Response({"detail": "media is private"}, status=status.HTTP_400_BAD_REQUEST)
             return media
         except PermissionDenied:
             return Response({"detail": "bad permissions"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1377,6 +1388,9 @@ class MediaActions(APIView):
         if isinstance(media, Response):
             return media
 
+        if user_is_pending_approval(request.user):
+            return Response({"detail": "User account not approved."}, status=status.HTTP_403_FORBIDDEN)
+
         action = request.data.get("type")
         extra = request.data.get("extra_info")
         public_actions = {name for name, _label in PUBLIC_USER_MEDIA_ACTIONS}
@@ -1390,6 +1404,13 @@ class MediaActions(APIView):
                     {"detail": "action allowed on logged in users only"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+        feature_gates = {
+            "like": getattr(settings, "CAN_LIKE_MEDIA", True),
+            "dislike": getattr(settings, "CAN_DISLIKE_MEDIA", True),
+            "report": getattr(settings, "CAN_REPORT_MEDIA", True),
+        }
+        if action in feature_gates and not feature_gates[action]:
+            return Response({"detail": "action not allowed"}, status=status.HTTP_400_BAD_REQUEST)
         if action:
             user_or_session = get_user_or_session(request)
             save_user_action.delay(

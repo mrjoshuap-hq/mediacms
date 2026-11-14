@@ -43,6 +43,7 @@ from ..methods import (
     handle_video_chapters,
     is_media_allowed_type,
     is_mediacms_editor,
+    is_mediacms_manager,
     media_password_unlocked,
     media_requires_password,
 )
@@ -714,7 +715,7 @@ def liked_media(request):
 def manage_users(request):
     """List users management view"""
 
-    if not is_mediacms_editor(request.user):
+    if not is_mediacms_manager(request.user):
         return HttpResponseRedirect("/")
 
     context = {}
@@ -864,9 +865,13 @@ def view_media(request):
     if request.user.is_authenticated:
         if request.user.has_contributor_access_to_media(media) or is_mediacms_editor(request.user):
             context["CAN_EDIT_MEDIA"] = True
+
+        # Comment delete matches CommentDetail: author is checked per comment;
+        # media owner and portal editors may delete any comment on the media.
+        if request.user == media.user or is_mediacms_editor(request.user):
             context["CAN_DELETE_COMMENTS"] = True
 
-        if request.user == media.user or is_mediacms_editor(request.user):
+        if request.user.has_owner_access_to_media(media) or is_mediacms_editor(request.user):
             context["CAN_DELETE_MEDIA"] = True
 
     # in case media is video and is processing (eg the case a video was just uploaded)

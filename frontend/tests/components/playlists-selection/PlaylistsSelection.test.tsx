@@ -7,7 +7,9 @@ import { MediaPageStore } from '../../../src/static/js/utils/stores/';
 import { MediaPageActions } from '../../../src/static/js/utils/actions/';
 
 jest.mock('../../../src/static/js/utils/stores/', () => require('../../_support/compD_storeMocks').mockStoresModule());
-jest.mock('../../../src/static/js/utils/actions/', () => require('../../_support/compD_storeMocks').mockActionsModule());
+jest.mock('../../../src/static/js/utils/actions/', () =>
+    require('../../_support/compD_storeMocks').mockActionsModule()
+);
 
 const mediaStore = MediaPageStore as any;
 

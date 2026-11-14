@@ -131,10 +131,23 @@ class UserAllowedToCommentTest(PermissionTestCase):
         self.assertFalse(self.allowed(self.verified))
 
     @override_settings(CAN_COMMENT='nobody')
-    def test_unknown_policy_allows_only_superusers(self):
+    def test_unknown_policy_allows_editors_managers_and_superusers(self):
         self.assertFalse(self.allowed(self.regular))
-        self.assertFalse(self.allowed(self.manager))
+        self.assertTrue(self.allowed(self.editor))
+        self.assertTrue(self.allowed(self.manager))
         self.assertTrue(self.allowed(self.admin))
+
+    @override_settings(CAN_COMMENT='advancedUser')
+    def test_editors_bypass_comment_policy(self):
+        self.assertFalse(self.allowed(self.regular))
+        self.assertTrue(self.allowed(self.editor))
+
+    @override_settings(USERS_NEEDS_TO_BE_APPROVED=True, CAN_COMMENT='all')
+    def test_pending_users_cannot_comment(self):
+        pending = make_user()
+        pending.is_approved = False
+        pending.save()
+        self.assertFalse(self.allowed(pending))
 
 
 class IsUserOrManagerTest(PermissionTestCase):
@@ -228,6 +241,12 @@ class IsMediaContributorOrEditorTest(PermissionTestCase):
         self.assertTrue(self.allowed('DELETE', self.regular, self.private))
         self.assertTrue(self.allowed('DELETE', self.editor, self.private))
         self.assertFalse(self.allowed('PUT', self.other, self.public))
+
+    def test_shared_owner_may_delete(self):
+        co_owner = make_user()
+        MediaPermission.objects.create(owner_user=self.regular, user=co_owner, media=self.private, permission='owner')
+        self.assertTrue(self.allowed('PUT', co_owner, self.private))
+        self.assertTrue(self.allowed('DELETE', co_owner, self.private))
 
 
 class IsMediacmsEditorTest(PermissionTestCase):

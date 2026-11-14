@@ -6,6 +6,7 @@ from files.methods import (
     is_mediacms_editor,
     is_mediacms_manager,
     user_allowed_to_upload,
+    user_is_pending_approval,
 )
 
 
@@ -16,6 +17,22 @@ class IsAuthorizedToAdd(permissions.BasePermission):
         if not user_allowed_to_upload(request):
             raise PermissionDenied("You don't have permission to upload media, or have reached max number of media uploads.")
 
+        return True
+
+
+class IsAuthorizedToCreatePlaylist(permissions.BasePermission):
+    """Authenticated, non-pending users may create playlists.
+
+    Playlist creation is independent of upload quota and CAN_ADD_MEDIA.
+    """
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        if request.user.is_anonymous:
+            return False
+        if user_is_pending_approval(request.user):
+            return False
         return True
 
 
@@ -69,10 +86,14 @@ class IsMediaContributorOrEditor(permissions.BasePermission):
             if obj.state != "private":
                 return True
             return request.user.is_authenticated and (request.user.has_member_access_to_media(obj) or is_mediacms_editor(request.user))
+        if not request.user.is_authenticated or user_is_pending_approval(request.user):
+            return False
         if request.user.is_superuser or is_mediacms_editor(request.user):
             return True
         if obj.user == request.user:
             return True
+        if request.method == "DELETE":
+            return request.user.has_owner_access_to_media(obj)
         if request.method in ("PUT", "PATCH"):
             return request.user.has_contributor_access_to_media(obj)
         return False
@@ -84,7 +105,9 @@ def user_allowed_to_comment(request):
     """
     if request.user.is_anonymous:
         return False
-    if request.user.is_superuser:
+    if user_is_pending_approval(request.user):
+        return False
+    if request.user.is_superuser or is_mediacms_editor(request.user):
         return True
 
     # Default is "all"

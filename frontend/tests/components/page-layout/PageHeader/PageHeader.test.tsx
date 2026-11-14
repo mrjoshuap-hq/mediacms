@@ -6,7 +6,9 @@ import { UserProvider } from '../../../../src/static/js/utils/contexts/UserConte
 import { PageHeader } from '../../../../src/static/js/components/page-layout/PageHeader/PageHeader';
 import { PageStore } from '../../../../src/static/js/utils/stores/';
 
-jest.mock('../../../../src/static/js/utils/stores/', () => require('../../../_support/compD_storeMocks').mockStoresModule());
+jest.mock('../../../../src/static/js/utils/stores/', () =>
+    require('../../../_support/compD_storeMocks').mockStoresModule()
+);
 
 jest.mock('../../../../src/static/js/components/page-layout/PageHeader/SearchField', () => ({
     SearchField: () => require('react').createElement('div', { className: 'mock-search-field' }),

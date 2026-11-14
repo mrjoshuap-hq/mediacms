@@ -144,6 +144,7 @@ nav:
                 - Integrations: guides/admin/integrations.md
                 - Site health and database: guides/admin/site.md
                 - Settings catalog: guides/admin/settings.md
+                - Permission access changes: guides/admin/permissions-changes.md
                 - Content migration: guides/admin/content-migration.md
                 - Site upgrade: guides/admin/site-upgrade.md
                 - Moodle and LTI: guides/admin/moodle.md

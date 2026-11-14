@@ -33,9 +33,7 @@ describe('unimplemented / stubbed features', () => {
     });
 
     describe('Comment video markers', () => {
-        testUnimplemented(
-            'Comment timestamp links should seek the Video.js player via videojs-markers integration'
-        );
+        testUnimplemented('Comment timestamp links should seek the Video.js player via videojs-markers integration');
     });
 
     describe('Bug-locking copy / settings', () => {

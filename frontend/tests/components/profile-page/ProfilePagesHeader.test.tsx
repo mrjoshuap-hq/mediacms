@@ -45,7 +45,15 @@ describe('components/profile-page', () => {
             );
             const labels = Array.from(container.querySelectorAll('.profile-nav a')).map((a) => a.textContent);
             expect(labels).toEqual(
-                expect.arrayContaining(['About', 'Media I own', 'Shared by me', 'Shared with me', 'Playlists', 'History', 'Liked'])
+                expect.arrayContaining([
+                    'About',
+                    'Media I own',
+                    'Shared by me',
+                    'Shared with me',
+                    'Playlists',
+                    'History',
+                    'Liked',
+                ])
             );
             unmount();
         });

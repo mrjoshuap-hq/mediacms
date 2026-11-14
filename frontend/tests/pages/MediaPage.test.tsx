@@ -11,9 +11,7 @@ jest.mock('../../src/static/js/pages/_Page', () => ({
 jest.mock('../../src/static/js/components/media-viewer/VideoViewer', () => (props: any) => (
     <div className="mock-video-viewer" data-in-embed={String(props.inEmbed)} />
 ));
-jest.mock('../../src/static/js/components/media-viewer/ImageViewer', () => () => (
-    <div className="mock-image-viewer" />
-));
+jest.mock('../../src/static/js/components/media-viewer/ImageViewer', () => () => <div className="mock-image-viewer" />);
 jest.mock('../../src/static/js/components/media-viewer/PdfViewer', () => (props: any) => (
     <div className="mock-pdf-viewer" data-url={props.fileUrl} />
 ));

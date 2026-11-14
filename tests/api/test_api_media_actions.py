@@ -142,6 +142,17 @@ class MediaActionsPostTest(TestCase):
         self.assertEqual(self.act("like", client=owner_client).status_code, 201)
         self.assertTrue(MediaAction.objects.filter(media=self.media, user=self.owner, action="like").exists())
 
+    def test_editor_and_shared_viewer_can_act_on_private_media(self):
+        Media.objects.filter(pk=self.media.pk).update(state="private")
+        editor = create_account(is_editor=True)
+        shared = create_account()
+        MediaPermission.objects.create(owner_user=self.owner, user=shared, media=self.media, permission="viewer")
+        for user in (editor, shared):
+            client = APIClient()
+            client.force_authenticate(user)
+            with self.subTest(user=user.username):
+                self.assertEqual(self.act("watch", client=client).status_code, 201)
+
 
 class MediaActionsAnonymousTest(TestCase):
     def setUp(self):

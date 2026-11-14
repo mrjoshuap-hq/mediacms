@@ -49,6 +49,10 @@ flowchart TB
     managerRole --> superuserRole
 ```
 
+## Access changes in this beta
+
+Some permission checks changed so the app matches these role pages. Operators should read [Permission access changes](../guides/admin/permissions-changes.md) before they upgrade.
+
 ## Next step
 
 Read the page for your role, or open [Compare roles](compare.md).

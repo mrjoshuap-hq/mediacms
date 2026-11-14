@@ -436,16 +436,17 @@ def get_next_state(user, current_state, next_state):
             )
         return next_state
 
-    if settings.PORTAL_WORKFLOW == "private":
+    if settings.PORTAL_WORKFLOW in ("private", "private_verified"):
         if next_state in ["private", "unlisted"]:
             next_state = next_state
         else:
             next_state = current_state
             logger.debug(
-                "State transition blocked by workflow - user_id=%s, current_state=%s, requested_state=%s, workflow=private",
+                "State transition blocked by workflow - user_id=%s, current_state=%s, requested_state=%s, workflow=%s",
                 getattr(user, 'id', None),
                 current_state,
                 original_next_state,
+                settings.PORTAL_WORKFLOW,
             )
 
     if settings.PORTAL_WORKFLOW == "unlisted":

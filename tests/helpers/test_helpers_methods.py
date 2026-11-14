@@ -125,6 +125,12 @@ class NextStateTests(TestCase):
     def test_public_workflow_allows_users_any_state(self):
         self.assertEqual(methods.get_next_state(self.regular, "private", "public"), "public")
 
+    @override_settings(PORTAL_WORKFLOW="private_verified")
+    def test_private_verified_workflow_blocks_users_from_publishing(self):
+        self.assertEqual(methods.get_next_state(self.regular, "private", "public"), "private")
+        self.assertEqual(methods.get_next_state(self.regular, "private", "unlisted"), "unlisted")
+        self.assertEqual(methods.get_next_state(self.editor, "private", "public"), "public")
+
 
 class UserOrSessionTests(TestCase):
     def build_request(self, user):

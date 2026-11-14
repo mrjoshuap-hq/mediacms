@@ -65,10 +65,10 @@ MediaCMS reads `local_settings.py` after `settings.py`. A few values are changed
 
 | Setting | Default | Effect |
 |---------|---------|--------|
-| `UPLOAD_MEDIA_ALLOWED` | `True` | `False` hides the upload button only |
-| `CAN_LIKE_MEDIA` | `True` | Shows the like button |
-| `CAN_DISLIKE_MEDIA` | `True` | Shows the dislike button |
-| `CAN_REPORT_MEDIA` | `True` | Shows the report button |
+| `UPLOAD_MEDIA_ALLOWED` | `True` | Global upload kill switch. The upload button also follows `CAN_ADD_MEDIA`, approval, and quota |
+| `CAN_LIKE_MEDIA` | `True` | Shows the like button and allows the like API action |
+| `CAN_DISLIKE_MEDIA` | `True` | Shows the dislike button and allows the dislike API action |
+| `CAN_REPORT_MEDIA` | `True` | Shows the report button and allows the report API action |
 | `CAN_SHARE_MEDIA` | `True` | Shows the share button |
 | `ALLOW_RATINGS` | `False` | Experimental. Does not work |
 | `ALLOW_RATINGS_CONFIRMED_EMAIL_ONLY` | `True` | For ratings |

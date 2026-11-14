@@ -124,7 +124,8 @@ class MediaSerializer(serializers.ModelSerializer):
 
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        if user and not is_mediacms_editor(user) and settings.PORTAL_WORKFLOW != "public" and value == "public":
+        workflow = getattr(settings, "PORTAL_WORKFLOW", "public")
+        if user and not is_mediacms_editor(user) and workflow != "public" and value == "public":
             raise serializers.ValidationError("You are not allowed to set media to public state")
         return value
 

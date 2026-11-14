@@ -7,7 +7,9 @@ import { PlaylistViewStore, PageStore } from '../../../src/static/js/utils/store
 import { PageActions, PlaylistViewActions } from '../../../src/static/js/utils/actions/';
 
 jest.mock('../../../src/static/js/utils/stores/', () => require('../../_support/compD_storeMocks').mockStoresModule());
-jest.mock('../../../src/static/js/utils/actions/', () => require('../../_support/compD_storeMocks').mockActionsModule());
+jest.mock('../../../src/static/js/utils/actions/', () =>
+    require('../../_support/compD_storeMocks').mockActionsModule()
+);
 jest.mock('../../../src/static/js/components/media-page/PlaylistPlaybackMedia', () => ({
     PlaylistPlaybackMedia: () => require('react').createElement('div', { className: 'mock-playlist-playback' }),
 }));

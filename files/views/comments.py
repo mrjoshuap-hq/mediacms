@@ -22,6 +22,7 @@ from ..methods import (
     is_mediacms_editor,
     media_password_unlocked,
     notify_user_on_comment,
+    user_is_pending_approval,
 )
 from ..models import Comment, Media
 from ..serializers import CommentSerializer
@@ -124,6 +125,8 @@ class CommentDetail(APIView):
         Administrators, MediaCMS editors and managers,
         media owner, and comment owners, can delete a comment
         """
+        if user_is_pending_approval(request.user):
+            return Response({"detail": "User account not approved."}, status=status.HTTP_403_FORBIDDEN)
         if uid:
             try:
                 comment = Comment.objects.get(uid=uid)
@@ -146,6 +149,8 @@ class CommentDetail(APIView):
     )
     def post(self, request, friendly_token):
         """Create a comment"""
+        if user_is_pending_approval(request.user):
+            return Response({"detail": "User account not approved."}, status=status.HTTP_403_FORBIDDEN)
         media = self.get_object(friendly_token)
         if isinstance(media, Response):
             return media

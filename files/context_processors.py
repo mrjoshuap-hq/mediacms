@@ -2,8 +2,15 @@ from django.conf import settings
 
 from cms.version import VERSION
 
+from cms.permissions import user_allowed_to_comment
+
 from .frontend_translations import get_translation, get_translation_strings
-from .methods import is_mediacms_editor, is_mediacms_manager
+from .methods import (
+    is_mediacms_editor,
+    is_mediacms_manager,
+    user_allowed_to_upload,
+    user_is_pending_approval,
+)
 from .models import Page
 from .page_slugs import HTML_SECTIONS, INJECT_SLUGS, LINK_SECTIONS, parse_page_slug
 
@@ -33,7 +40,8 @@ def stuff(request):
     if not request.user.is_authenticated:
         groups["library"] = []
         groups["personal"] = []
-    if not (request.user.is_authenticated and is_mediacms_editor(request.user)):
+    user_is_pending = user_is_pending_approval(request.user)
+    if not (request.user.is_authenticated and is_mediacms_editor(request.user) and not user_is_pending):
         groups["manage"] = []
     ret["SIDEBAR_BROWSE"] = groups["browse"]
     ret["SIDEBAR_LIBRARY"] = groups["library"]
@@ -54,7 +62,8 @@ def stuff(request):
     ret["LOAD_FROM_CDN"] = settings.LOAD_FROM_CDN
     ret["CAN_LOGIN"] = settings.LOGIN_ALLOWED
     ret["CAN_REGISTER"] = settings.REGISTER_ALLOWED
-    ret["CAN_UPLOAD_MEDIA"] = settings.UPLOAD_MEDIA_ALLOWED
+    ret["CAN_UPLOAD_MEDIA"] = bool(settings.UPLOAD_MEDIA_ALLOWED) and user_allowed_to_upload(request)
+    ret["CAN_ADD_COMMENT"] = user_allowed_to_comment(request)
     ret["TIMESTAMP_IN_TIMEBAR"] = settings.TIMESTAMP_IN_TIMEBAR
     ret["CAN_MENTION_IN_COMMENTS"] = settings.ALLOW_MENTION_IN_COMMENTS
     ret["CAN_LIKE_MEDIA"] = settings.CAN_LIKE_MEDIA
@@ -67,8 +76,9 @@ def stuff(request):
     ret["SIDEBAR_FOOTER_TEXT"] = settings.SIDEBAR_FOOTER_TEXT
     ret["POST_UPLOAD_AUTHOR_MESSAGE_UNLISTED_NO_COMMENTARY"] = settings.POST_UPLOAD_AUTHOR_MESSAGE_UNLISTED_NO_COMMENTARY
     ret["IS_MEDIACMS_ADMIN"] = request.user.is_superuser
-    ret["IS_MEDIACMS_EDITOR"] = is_mediacms_editor(request.user)
-    ret["IS_MEDIACMS_MANAGER"] = is_mediacms_manager(request.user)
+    ret["IS_MEDIACMS_EDITOR"] = is_mediacms_editor(request.user) and not user_is_pending
+    ret["IS_MEDIACMS_MANAGER"] = is_mediacms_manager(request.user) and not user_is_pending
+    ret["USER_IS_PENDING"] = user_is_pending
     ret["USERS_NEEDS_TO_BE_APPROVED"] = settings.USERS_NEEDS_TO_BE_APPROVED
 
     can_see_members_page = False
@@ -105,6 +115,7 @@ def stuff(request):
     ret["CAN_DELETE_MEDIA"] = False
     ret["CAN_DELETE_COMMENTS"] = False
     ret["CAN_DELETE"] = False
+    ret["SHOW_CONTACT_FORM"] = False
 
     # Default media (can be overridden by views, used in config/index.html)
     ret["media"] = None

@@ -288,10 +288,11 @@ class MediaDetailSharedEditTest(TestCase):
         self.media.refresh_from_db()
         self.assertEqual(self.media.title, "shared original")
 
-    def test_edit_rights_do_not_include_deleting(self):
-        for user in (self.share("editor"), self.share("owner")):
-            self.assertEqual(self.client_for(user).delete(detail_url(self.media)).status_code, 401)
+    def test_shared_editor_cannot_delete_but_shared_owner_can(self):
+        self.assertEqual(self.client_for(self.share("editor")).delete(detail_url(self.media)).status_code, 401)
         self.assertTrue(Media.objects.filter(pk=self.media.pk).exists())
+        self.assertEqual(self.client_for(self.share("owner")).delete(detail_url(self.media)).status_code, 204)
+        self.assertFalse(Media.objects.filter(pk=self.media.pk).exists())
 
     def test_edit_rights_do_not_include_the_editor_only_actions(self):
         response = self.client_for(self.share("editor")).post(detail_url(self.media), {"type": "review", "result": "true"}, format="multipart")

@@ -10,6 +10,7 @@ from users.models import User
 
 PASSWORD = "roles_pass_31415"
 NEW_PASSWORD = "Rq7!vNx2#kLp"
+MANAGE_MEDIA_AND_COMMENTS = ("/manage/media", "/manage/comments")
 MANAGE_PAGES = ("/manage/users", "/manage/media", "/manage/comments")
 
 
@@ -101,14 +102,16 @@ class EditorPrivilegesTest(RolesTestBase):
         self.assertEqual(self.api.delete(self.media_url(self.public_media)).status_code, 204)
         self.assertFalse(Media.objects.filter(pk=self.public_media.pk).exists())
 
-    def test_can_open_management_pages(self):
-        for url in MANAGE_PAGES:
+    def test_can_open_media_and_comments_management_pages(self):
+        for url in MANAGE_MEDIA_AND_COMMENTS:
             self.assertEqual(self.client.get(url).status_code, 200, url)
+        self.assertRedirects(self.client.get("/manage/users"), "/", fetch_redirect_response=False)
 
     def test_cannot_manage_users(self):
         self.assertEqual(self.api.delete(f"/api/v1/users/{self.owner.username}").status_code, 400)
         self.assertEqual(self.api.put(f"/api/v1/users/{self.owner.username}", {"action": "approve_user"}, format="multipart").status_code, 400)
         self.assertRedirects(self.client.get(f"/user/{self.owner.username}/edit"), "/", fetch_redirect_response=False)
+        self.assertEqual(self.api.get("/api/v1/manage_users").status_code, 403)
         self.assertEqual(self.api.post("/api/v1/users", {"username": "x_new_user", "password": NEW_PASSWORD, "email": "x@example.com", "name": "x"}, format="json").status_code, 403)
         self.assertTrue(User.objects.filter(pk=self.owner.pk).exists())
 

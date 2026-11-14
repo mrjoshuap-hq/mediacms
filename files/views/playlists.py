@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
-from cms.permissions import IsAuthorizedToAdd, IsUserOrEditor
+from cms.permissions import IsAuthorizedToCreatePlaylist, IsUserOrEditor
 
 from ..methods import is_mediacms_editor, user_is_pending_approval
 from ..models import Media, Playlist, PlaylistMedia
@@ -40,7 +40,7 @@ def playlist_media_accessible_q(user):
 class PlaylistList(APIView):
     """Playlists listings and creation views"""
 
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly, IsAuthorizedToAdd)
+    permission_classes = (permissions.IsAuthenticatedOrReadOnly, IsAuthorizedToCreatePlaylist)
     parser_classes = (JSONParser, MultiPartParser, FormParser, FileUploadParser)
 
     @swagger_auto_schema(
@@ -89,6 +89,9 @@ class PlaylistList(APIView):
         operation_description='Create a playlist owned by the authenticated user. The friendly token is assigned by the server.',
     )
     def post(self, request, format=None):
+        blocked = _pending_library_block(request.user)
+        if blocked:
+            return blocked
         serializer = PlaylistSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             serializer.save(user=request.user)

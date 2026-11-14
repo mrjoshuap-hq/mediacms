@@ -42,6 +42,7 @@ See [Site health and database](../guides/admin/site.md), [Admin portal map](../g
 
 ## Bug Fixes
 
+* **permissions:** align global roles, pending writes, MediaPermission/RBAC delete and state rules, manage users (managers only), and frontend `can.*` flags with the roles and permissions guides; see [Permission access changes](../guides/admin/permissions-changes.md)
 * **docs:** publish mike docs through the GitHub Pages Actions deploy path
 * **i18n:** German translation additions and corrections (#1622)
 * **templates:** default context keys for permissions, media, and current site to avoid AttributeError log floods
@@ -53,6 +54,7 @@ See [Site health and database](../guides/admin/site.md), [Admin portal map](../g
 
 ## Documentation
 
+* **admin:** permission access-change table for the v10 beta role and ACL alignment
 * **admin:** admin portal guides for site, moderation, processing, people, integrations, and site upgrade
 * **ops:** Docker upgrade checklist and maintenance backup notes (#1562, #1564)
 * **meta:** AI disclosure attestation on pull request and issue templates (#1640)

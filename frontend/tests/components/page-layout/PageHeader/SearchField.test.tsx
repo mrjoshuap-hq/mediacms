@@ -9,7 +9,9 @@ import { PageStore, SearchFieldStore } from '../../../../src/static/js/utils/sto
 import { SearchFieldActions } from '../../../../src/static/js/utils/actions/';
 import { linksConfig } from '../../../../src/static/js/utils/contexts/';
 
-jest.mock('../../../../src/static/js/utils/stores/', () => require('../../../_support/compD_storeMocks').mockStoresModule());
+jest.mock('../../../../src/static/js/utils/stores/', () =>
+    require('../../../_support/compD_storeMocks').mockStoresModule()
+);
 jest.mock('../../../../src/static/js/utils/actions/', () =>
     require('../../../_support/compD_storeMocks').mockActionsModule()
 );

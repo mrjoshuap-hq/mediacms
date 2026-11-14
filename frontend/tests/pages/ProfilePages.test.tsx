@@ -10,7 +10,7 @@ jest.mock('../../src/static/js/utils/stores/', () => require('../_support/compD_
 jest.mock('../../src/static/js/utils/actions/', () => require('../_support/compD_storeMocks').mockActionsModule());
 jest.mock('../../src/static/js/utils/hoc/withBulkActions', () => {
     const ReactActual = require('react');
-  return {
+    return {
         withBulkActions: (Wrapped: React.ComponentType<any>) => {
             const bulkActions = {
                 selectedMedia: new Set<string>(),

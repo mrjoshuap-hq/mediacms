@@ -38,6 +38,10 @@ flowchart LR
 2. **Scratch.** Copy the source database and migrate the copy. The source is not changed.
 3. **Apply.** After the real upgrade, record your answers once.
 
+## Permission access changes
+
+If you upgrade to the v10 beta, review [Permission access changes](permissions-changes.md). Editors lose Manage users. Pending users lose more write actions. Co-owners and RBAC managers gain delete where the permissions guide requires it.
+
 ## Before you start
 
 You need:

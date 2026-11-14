@@ -15,7 +15,7 @@ from users.serializers import UserSerializer
 
 from .methods import is_mediacms_manager
 from .models import Category, Comment, Media
-from .permissions import IsMediacmsEditor
+from .permissions import IsMediacmsEditor, IsMediacmsManager
 from .serializers import CommentSerializer, MediaSerializer
 
 logger = logging.getLogger(__name__)
@@ -220,12 +220,11 @@ class CommentList(APIView):
 class UserList(APIView):
     """Users listings
     Used on management pages of MediaCMS
-    Should be available only to MediaCMS editors,
-    managers and admins. Delete should be option
-    for managers+admins only.
+    Should be available only to MediaCMS managers
+    and admins. Delete is managers+admins only.
     """
 
-    permission_classes = (IsMediacmsEditor,)
+    permission_classes = (IsMediacmsManager,)
     parser_classes = (JSONParser,)
 
     @swagger_auto_schema(
@@ -293,15 +292,19 @@ class UserList(APIView):
 
         usernames = request.GET.get("usernames")
         if usernames:
-            usernames_list = usernames.split(",")
-            count = User.objects.filter(username__in=usernames_list).count()
-            User.objects.filter(username__in=usernames_list).delete()
+            usernames_list = [u for u in usernames.split(",") if u]
+            users = User.objects.filter(username__in=usernames_list)
+            if not request.user.is_superuser and users.filter(is_superuser=True).exists():
+                return Response({"detail": "You do not have permission to delete a superuser."}, status=status.HTTP_403_FORBIDDEN)
+            count = users.count()
+            deleted_usernames = list(users.values_list("username", flat=True))
+            users.delete()
             logger.info(
                 "Admin action: users deleted - count=%s, admin_user_id=%s, admin_username=%s, deleted_usernames=%s",
                 count,
                 request.user.id,
                 request.user.username,
-                usernames_list,
+                deleted_usernames,
             )
 
         tokens = request.GET.get("tokens")

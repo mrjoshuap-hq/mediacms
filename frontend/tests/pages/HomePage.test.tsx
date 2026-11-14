@@ -27,10 +27,7 @@ jest.mock('../../src/static/js/components/item-list/ItemListAsync.jsx', () => ({
 }));
 
 jest.mock('../../src/static/js/components/item-list/InlineSliderItemListAsync.jsx', () => ({
-    InlineSliderItemListAsync: (props: {
-        itemsCountCallback?: (n: number) => void;
-        requestUrl?: string;
-    }) => {
+    InlineSliderItemListAsync: (props: { itemsCountCallback?: (n: number) => void; requestUrl?: string }) => {
         useEffect(() => {
             const count = String(props.requestUrl || '').includes('recommended') ? recommendedCount : featuredCount;
             props.itemsCountCallback?.(count);

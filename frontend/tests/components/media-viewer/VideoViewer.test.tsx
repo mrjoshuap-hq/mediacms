@@ -136,7 +136,9 @@ describe('components/media-viewer/VideoViewer', () => {
 
     test('Forwards theater mode changes to VideoViewerActions', () => {
         renderIntoContainer(<VideoViewer data={playableData} siteUrl="https://example.com/" inEmbed={false} />);
-        const onStateUpdate = capturedEmbedProps.current?.onStateUpdateCallback as (state: Record<string, unknown>) => void;
+        const onStateUpdate = capturedEmbedProps.current?.onStateUpdateCallback as (
+            state: Record<string, unknown>
+        ) => void;
         expect(typeof onStateUpdate).toBe('function');
         onStateUpdate({
             theaterMode: true,

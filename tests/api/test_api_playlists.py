@@ -111,10 +111,19 @@ class PlaylistListTest(TestCase):
         self.assertIn('title', response.data)
 
     @override_settings(CAN_ADD_MEDIA='advancedUser')
-    def test_users_not_allowed_to_upload_cannot_create_playlists(self):
+    def test_users_not_allowed_to_upload_can_still_create_playlists(self):
         response = logged_in(self.other).post(PLAYLISTS_URL, {'title': 'not advanced'})
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Playlist.objects.filter(title='not advanced', user=self.other).exists())
+
+    @override_settings(USERS_NEEDS_TO_BE_APPROVED=True)
+    def test_pending_users_cannot_create_playlists(self):
+        pending = make_user()
+        pending.is_approved = False
+        pending.save()
+        response = logged_in(pending).post(PLAYLISTS_URL, {'title': 'pending playlist'})
         self.assertEqual(response.status_code, 403)
-        self.assertFalse(Playlist.objects.filter(title='not advanced').exists())
+        self.assertFalse(Playlist.objects.filter(title='pending playlist').exists())
 
 
 class PlaylistDetailVisibilityTest(TestCase):

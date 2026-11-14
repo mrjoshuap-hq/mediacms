@@ -1,5 +1,6 @@
 from django.conf import settings
 
+from cms.permissions import user_allowed_to_comment
 from cms.version import VERSION
 
 from cms.permissions import user_allowed_to_comment

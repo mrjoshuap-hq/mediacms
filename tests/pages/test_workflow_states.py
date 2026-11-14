@@ -5,7 +5,6 @@ from django.test import Client, TestCase, override_settings
 from rest_framework.test import APIClient
 
 from files.methods import set_media_password
-from files.models import Media
 from files.tests import create_account, create_media
 from files.tests.media_utils import SMALL_VIDEO
 

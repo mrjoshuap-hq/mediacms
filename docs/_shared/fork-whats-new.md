@@ -5,6 +5,29 @@ These notes cover the fork beta line (`mediacms-next`) relative to upstream `mai
 
 See [Site health and database](../guides/admin/site.md), [Admin portal map](../guides/admin/portal-map.md), and [Fork beta and stable images](../getting-started/install.md#fork-beta-and-stable-images-ghcr).
 
+## Upgrade impact
+
+Use this table when you update a portal. It lists extra steps beyond pulling the image and running the usual `migrations` container. A blank cell means no extra step for that row.
+
+| Change | Models / DB migrations | Frontend build | Language rebuild | Restart | Notes |
+|--------|------------------------|----------------|------------------|---------|-------|
+| Permission ACL alignment | No | Yes (`make build-frontend`) | No | web (and Celery if workers cache settings) | Review [Permission access changes](../guides/admin/permissions-changes.md) before you upgrade |
+| Password-protected media | Yes (`Media.password` and related) | Yes | Yes if you ship new UI strings | web, celery_worker | Session unlock API: `POST /api/v1/media/{token}/unlock` |
+| Site upgrade tooling | Yes (`UpgradeDecision` and related) | No | No | web | See [Site upgrade](../guides/admin/site-upgrade.md) |
+| Admin portal dashboards and health | Yes when new admin models land | No | Optional | web | Collect static if you do not use the image static pipeline |
+| Logging / trusted proxies settings | No | No | No | web, celery_worker, celery_beat | Set `TRUSTED_PROXIES` / log settings in `local_settings.py` |
+| HLS / encoding task changes | No (unless a new setting is required) | No | No | celery_worker, celery_beat | Confirm beat schedule for cleanup tasks |
+| Translation-only fixes | No | Yes when React strings change | Yes (`process_translations`) | web after static copy | Django template strings do not need a frontend build |
+
+Column meanings:
+
+- **Models / DB migrations** — Django model change and a migration that `migrate` must apply.
+- **Frontend build** — Run `make build-frontend` (or the image equivalent) so `static/js` matches the React sources.
+- **Language rebuild** — Add strings to `files/frontend_translations/en.py`, run `python manage.py process_translations`, then translate other languages.
+- **Restart** — Services that must reload Python or Celery code after the update.
+
+When you add a feature or fix that needs an extra step, add a row here in the same pull request.
+
 ## Features
 
 * **admin:** workflow sidebar with Moderation, Library, Processing, People, Integrations, and Site groups
@@ -42,7 +65,7 @@ See [Site health and database](../guides/admin/site.md), [Admin portal map](../g
 
 ## Bug Fixes
 
-* **permissions:** align global roles, pending writes, MediaPermission/RBAC delete and state rules, manage users (managers only), and frontend `can.*` flags with the roles and permissions guides; see [Permission access changes](../guides/admin/permissions-changes.md)
+* **permissions:** align global roles, pending writes, MediaPermission/RBAC delete and state rules, manage users (managers only), and frontend `can.*` flags with the roles and permissions guides; see [Permission access changes](../guides/admin/permissions-changes.md) and the **Upgrade impact** table above
 * **docs:** publish mike docs through the GitHub Pages Actions deploy path
 * **i18n:** German translation additions and corrections (#1622)
 * **templates:** default context keys for permissions, media, and current site to avoid AttributeError log floods
@@ -55,6 +78,7 @@ See [Site health and database](../guides/admin/site.md), [Admin portal map](../g
 ## Documentation
 
 * **admin:** permission access-change table for the v10 beta role and ACL alignment
+* **ops:** Upgrade impact table for migrations, frontend builds, language rebuilds, and restarts
 * **admin:** admin portal guides for site, moderation, processing, people, integrations, and site upgrade
 * **ops:** Docker upgrade checklist and maintenance backup notes (#1562, #1564)
 * **meta:** AI disclosure attestation on pull request and issue templates (#1640)

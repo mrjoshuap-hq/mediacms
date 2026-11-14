@@ -27,17 +27,18 @@ A staff user sees only the models that the account has permission to use. A grou
 |------|-------|-----------|
 | 1 | [Admin portal map](portal-map.md) | Find a page in the sidebar |
 | 2 | [Settings catalog](settings.md) | Find the setting that controls a behavior |
-| 3 | [Moderation](moderation.md) | Handle reports, reviews, and comments |
-| 4 | [Library and engagement](library.md) | Manage media, categories, tags, playlists, and channels |
-| 5 | [Processing](processing.md) | Manage encoding, captions, and FFmpeg settings |
-| 6 | [People](people.md) | Approve users and manage RBAC groups |
-| 7 | [Integrations](integrations.md) | Check identity providers, LTI, and migration records |
-| 8 | [Site health and database](site.md) | Check health, back up the database, read the task list |
-| 9 | [Custom pages and appearance](pages-appearance.md) | Add pages, change the logo, add translations |
-| 10 | [Content migration](content-migration.md) | Import media from Kaltura, YouTube, or Panopto |
-| 11 | [Site upgrade](site-upgrade.md) | Move an existing install to a new MediaCMS version |
-| 12 | [Moodle and LTI](moodle.md) | Connect Moodle |
-| 13 | [SAML and identity providers](saml.md) | Connect Microsoft Entra ID |
+| 3 | [Permission access changes](permissions-changes.md) | Review ACL and role behavior changes before an upgrade |
+| 4 | [Moderation](moderation.md) | Handle reports, reviews, and comments |
+| 5 | [Library and engagement](library.md) | Manage media, categories, tags, playlists, and channels |
+| 6 | [Processing](processing.md) | Manage encoding, captions, and FFmpeg settings |
+| 7 | [People](people.md) | Approve users and manage RBAC groups |
+| 8 | [Integrations](integrations.md) | Check identity providers, LTI, and migration records |
+| 9 | [Site health and database](site.md) | Check health, back up the database, read the task list |
+| 10 | [Custom pages and appearance](pages-appearance.md) | Add pages, change the logo, add translations |
+| 11 | [Content migration](content-migration.md) | Import media from Kaltura, YouTube, or Panopto |
+| 12 | [Site upgrade](site-upgrade.md) | Move an existing install to a new MediaCMS version |
+| 13 | [Moodle and LTI](moodle.md) | Connect Moodle |
+| 14 | [SAML and identity providers](saml.md) | Connect Microsoft Entra ID |
 
 ## Two words for two jobs
 

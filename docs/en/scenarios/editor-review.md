@@ -10,11 +10,11 @@ preconditions:
   - MEDIA_IS_REVIEWED is False
   - One uploaded video waits for review and its encoding status is success
 related_tests:
-  - tests/settings/test_user_roles_settings.py::EditorPrivilegesTest::test_can_open_management_pages
+  - tests/settings/test_user_roles_settings.py::EditorPrivilegesTest::test_can_open_media_and_comments_management_pages
   - tests/settings/test_user_roles_settings.py::EditorPrivilegesTest::test_can_review_media
   - tests/settings/test_user_roles_settings.py::PlainUserCannotTouchOthersTest::test_cannot_review_media_even_their_own
   - tests/api/test_api_manage.py::ManageMediaTest::test_filters_by_review_status
-  - tests/pages/test_pages_manage.py::ManagePagesAccessTest::test_editors_managers_and_admins_can_open_every_manage_page
+  - tests/pages/test_pages_manage.py::ManagePagesAccessTest::test_editors_can_open_media_and_comments_but_not_users
 ---
 
 # Find media that is not reviewed and mark it as reviewed

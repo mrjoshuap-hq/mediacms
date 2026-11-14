@@ -52,6 +52,20 @@ Do not mix them. Editors and managers use Manage pages. Staff and superusers use
 - **Content migration** imports media from another platform (Kaltura, YouTube, Panopto).
 - **Site upgrade** moves an existing MediaCMS install to a new MediaCMS version.
 
+## Upgrade impact rows
+
+When a change needs an extra operator step after update, add a row to the **Upgrade impact** table in `docs/_shared/fork-whats-new.md` in the same pull request.
+
+| Column | Use it for |
+|--------|------------|
+| Models / DB migrations | Django model or field changes that need `migrate` |
+| Frontend build | React or other Node bundles that must be copied to `static/` |
+| Language rebuild | New or changed translatable strings (`process_translations`) |
+| Restart | Services that must reload (web, celery_worker, celery_beat) |
+| Notes | Link to the guide or the access-change page |
+
+Do not leave the table stale. A permissions or ACL behavior change also needs a row in [Permission access changes](../guides/admin/permissions-changes.md) when access differs.
+
 ## Scenarios
 
 Use the [scenario template](scenario-template.md). One scenario is one role and one path. A branch is a new scenario.

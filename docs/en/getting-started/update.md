@@ -38,7 +38,8 @@ Use this page to update a MediaCMS Docker installation to the latest image.
     ```
 
 6. Read the `migrations` container output. Check that the migrations finish without errors.
-7. Open the portal. Check that you can sign in.
+7. Read the **Upgrade impact** table on [What's new](../reference/whats-new.md). Run any listed frontend build, language rebuild, or extra restart steps.
+8. Open the portal. Check that you can sign in.
 
 ## Check your custom nginx configuration
 

@@ -9,7 +9,7 @@ preconditions:
   - Signed in as an editor
   - One media item has a comment that breaks the rules
 related_tests:
-  - tests/api/test_api_manage.py::ManageApisAccessTest::test_editors_managers_and_admins_can_list_every_manage_api
+  - tests/api/test_api_manage.py::ManageApisAccessTest::test_editors_can_list_media_and_comments_but_not_users
   - tests/api/test_api_manage.py::ManageCommentsTest::test_lists_comments_on_any_media_including_private
   - tests/api/test_api_manage.py::ManageCommentsTest::test_editors_bulk_delete_comments
   - tests/api/test_api_comments.py::MediaCommentDeleteTest::test_editors_managers_and_admins_delete_any_comment

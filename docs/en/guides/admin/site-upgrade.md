@@ -42,6 +42,8 @@ flowchart LR
 
 If you upgrade to the v10 beta, review [Permission access changes](permissions-changes.md). Editors lose Manage users. Pending users lose more write actions. Co-owners and RBAC managers gain delete where the permissions guide requires it.
 
+Also read the **Upgrade impact** table on [What's new](../../reference/whats-new.md). It lists database migrations, frontend builds, language rebuilds, and service restarts for fork changes.
+
 ## Before you start
 
 You need:

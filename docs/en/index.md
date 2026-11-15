@@ -9,7 +9,7 @@ Use this documentation to install MediaCMS, understand each role, and complete c
 ## About this fork (10.0.0 / `mediacms-next`)
 
 !!! danger "Not a drop-in production upgrade from upstream"
-    This documentation describes the **mrjoshuap** MediaCMS fork at **10.0.0**. The beta line (`mediacms-next`, image tag `:beta`) changes often. Do **not** point a production portal at `:beta` or at an unpinned `mediacms-next` digest unless you accept data, permission, UI, and API churn. Prefer date-stamped tags (`v10.0.0.YYYYMMDD`) or `:stable` for anything you must keep running.
+    This documentation describes the **mrjoshuap** MediaCMS fork at **10.0.0**. The beta line (`mediacms-next`, image tag `:beta`) changes often. Do **not** point a production portal at `:beta` or at an unpinned `mediacms-next` digest unless you accept data, permission, UI, and API churn. Prefer date-stamped image tags (`:10.0.0.YYYYMMDD[.N]`) or `:stable` for anything you must keep running.
 
 !!! warning "Permissions and behavior can break existing workflows"
     The v10 line realigns roles and ACLs with the roles guides. Editors can lose Manage users. Pending users lose more write actions. Co-owners and RBAC managers can gain delete. Review [Permission access changes](guides/admin/permissions-changes.md) and the [Releases](releases/index.md) section **before** you upgrade.

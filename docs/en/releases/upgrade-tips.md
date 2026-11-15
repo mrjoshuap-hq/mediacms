@@ -3,7 +3,7 @@
 Practical commands and admin portal paths for known or likely problems when you move between **upstream ≤v9**, fork **10.0.0 stable**, and fork **10.0.0 beta**.
 
 !!! danger "Pick the line on purpose"
-    - Production that must stay still: pin `v10.0.0.YYYYMMDD` or use `:stable`. Never float on `:beta`.
+    - Production that must stay still: pin `:10.0.0.YYYYMMDD[.N]` or use `:stable`. Never float on `:beta`.
     - Early testing: `:beta` is fine on a disposable portal. Expect daily churn.
     - Leaving upstream ≤v9: treat the cutover as a **site upgrade**, not a casual image bump.
 
@@ -32,7 +32,7 @@ Practical commands and admin portal paths for known or likely problems when you 
 |------|-------|
 | Fork beta (churn OK) | `ghcr.io/mrjoshuap/mediacms:beta` (and `-full:beta` for Whisper) |
 | Fork stable floating | `ghcr.io/mrjoshuap/mediacms:stable` |
-| Fixed fork build | `ghcr.io/mrjoshuap/mediacms:v10.0.0.YYYYMMDD` |
+| Fixed fork build | `ghcr.io/mrjoshuap/mediacms:10.0.0.YYYYMMDD[.N]` |
 | Upgrade drill aliases | `:upgrade-audit` / `:upgrade-audit-beta` |
 | Upstream baseline | `mediacms/mediacms` on Docker Hub |
 
@@ -43,11 +43,11 @@ Example Compose override for a **pinned** beta stamp:
 ```yaml
 services:
   web:
-    image: ghcr.io/mrjoshuap/mediacms:v10.0.0.20261114
+    image: ghcr.io/mrjoshuap/mediacms:10.0.0.20261114
   celery_worker:
-    image: ghcr.io/mrjoshuap/mediacms:v10.0.0.20261114
+    image: ghcr.io/mrjoshuap/mediacms:10.0.0.20261114
   celery_beat:
-    image: ghcr.io/mrjoshuap/mediacms:v10.0.0.20261114
+    image: ghcr.io/mrjoshuap/mediacms:10.0.0.20261114
 ```
 
 ## Apply migrations

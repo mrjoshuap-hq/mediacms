@@ -85,11 +85,11 @@ docker compose up
 | `ghcr.io/mrjoshuap/mediacms:mediacms-next` | Same digest as `:beta` (branch alias) |
 | `ghcr.io/mrjoshuap/mediacms:stable` | Latest stable **base** release |
 | `ghcr.io/mrjoshuap/mediacms-full:stable` | Latest stable **full** release |
-| `ghcr.io/mrjoshuap/mediacms:v10.0.0.YYYYMMDD` | Immutable pin for one release |
+| `ghcr.io/mrjoshuap/mediacms:10.0.0.YYYYMMDD[.N]` | Immutable pin for one release |
 | `ghcr.io/mrjoshuap/mediacms:upgrade-audit-beta` | Base image alias for beta upgrade drills |
 | `ghcr.io/mrjoshuap/mediacms:upgrade-audit` | Base image alias for stable upgrade drills |
 
-Beta builds publish a GitHub **pre-release** on every push to `mediacms-next`. Stable releases publish only when a stamp tag `v10.0.0.YYYYMMDD` (or `v10.0.0.YYYYMMDD.N` for a same-day emergency) is pushed from `main`. The product base version lives in `version/FORK_VERSION`.
+Beta builds publish a GitHub **pre-release** on every push to `mediacms-next`. Stable releases publish only when a Git stamp tag `v10.0.0.YYYYMMDD` (or `v10.0.0.YYYYMMDD.N` for a same-day emergency) is pushed from `main`. The product base version lives in `version/FORK_VERSION`. The Git tag keeps the `v` prefix. The GHCR image tag drops it (`10.0.0.YYYYMMDD` or `10.0.0.YYYYMMDD.N`).
 
 Upstream Docker Hub images remain available as `MEDIACMS_IMAGE=mediacms/mediacms:latest` if you want them.
 

@@ -1,4 +1,4 @@
-"""Regression tests for plan-history catalog dates. No Django required."""
+"""Acceptance tests for the plan-history catalog. No Django required."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,202 +45,123 @@ def _rows(archive: Path) -> dict:
     return {row["file"]: row for row in json.loads((archive / "manifest.json").read_text(encoding="utf-8"))}
 
 
-def test_shallow_clone_does_not_store_boundary_updated():
-    """A clean note whose hash differs must not keep the shallow boundary time."""
-    work = Path(tempfile.mkdtemp(prefix="ph-shallow-"))
+def _archive(repo: Path) -> Path:
+    archive = repo / ".agent" / "plan-history"
+    archive.mkdir(parents=True)
+    (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
+    return archive
+
+
+def test_dirty_refresh_is_stable_on_the_second_run():
+    work = Path(tempfile.mkdtemp(prefix="ph-dirty-"))
     try:
         _init(work)
-        archive = work / ".agent" / "plan-history"
-        archive.mkdir(parents=True)
-        note = archive / "note.md"
-        note.write_text("# January note\n\noriginal\n", encoding="utf-8")
-        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
-        _commit(work, "add note", "2026-01-03T10:00:00-05:00")
+        archive = _archive(work)
+        (archive / "note.md").write_text("# Dirty note\n\nbody\n", encoding="utf-8")
+        _commit(work, "add", "2026-01-01T10:00:00-05:00")
+        (archive / "note.md").write_text("# Dirty note\n\nedited\n", encoding="utf-8")
         ri.main(["--archive", str(archive)])
-        _commit(work, "catalog", "2026-01-03T11:00:00-05:00")
-        note.write_text("# January note\n\nchanged on jan 3\n", encoding="utf-8")
-        _commit(work, "change note", "2026-01-03T15:00:00-05:00")
-        (work / "other.txt").write_text("unrelated\n", encoding="utf-8")
-        _commit(work, "unrelated", "2026-01-04T09:00:00-05:00")
-
-        shallow = Path(tempfile.mkdtemp(prefix="ph-shallow-clone-"))
-        try:
-            subprocess.run(
-                ["git", "clone", "--depth", "1", f"file://{work}", str(shallow)],
-                check=True,
-                capture_output=True,
-            )
-            sarchive = shallow / ".agent" / "plan-history"
-            before = (sarchive / "manifest.json").read_bytes()
-            before_index = (sarchive / "INDEX.md").read_bytes()
-            try:
-                ri.main(["--archive", str(sarchive)])
-            except SystemExit as exc:
-                assert exc.code == 1
-            else:
-                raise AssertionError("shallow refresh should refuse a git updated time")
-            assert (sarchive / "manifest.json").read_bytes() == before
-            assert (sarchive / "INDEX.md").read_bytes() == before_index
-            assert _rows(sarchive)["note.md"]["updated"] == "2026-01-03T10:00:00-05:00"
-        finally:
-            shutil.rmtree(shallow, ignore_errors=True)
+        first = (archive / "manifest.json").read_bytes()
+        time.sleep(2)
+        ri.main(["--archive", str(archive)])
+        assert (archive / "manifest.json").read_bytes() == first
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
-def test_reused_filename_uses_the_new_add_date():
-    """Deleting a note and reusing its name must not keep the old add date."""
-    work = Path(tempfile.mkdtemp(prefix="ph-reuse-"))
+def test_fresh_clone_keeps_the_recorded_updated():
+    work = Path(tempfile.mkdtemp(prefix="ph-clone-src-"))
+    clone = Path(tempfile.mkdtemp(prefix="ph-clone-"))
     try:
         _init(work)
-        archive = work / ".agent" / "plan-history"
-        archive.mkdir(parents=True)
-        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
-        (archive / "note.md").write_text("# Old note\n\nold body\n", encoding="utf-8")
-        _commit(work, "add old", "2024-04-04T12:00:00-05:00")
-        _git(work, "rm", ".agent/plan-history/note.md")
-        _commit(work, "delete old", "2025-05-05T12:00:00-05:00")
-        (archive / "note.md").write_text("# New note\n\nnew body from 2026\n", encoding="utf-8")
-        _commit(work, "readd", "2026-06-06T12:00:00-05:00")
-
+        archive = _archive(work)
+        (archive / "note.md").write_text("# Note\n\nuncommitted\n", encoding="utf-8")
         ri.main(["--archive", str(archive)])
-        row = _rows(archive)["note.md"]
-        assert row["date"] == "2026-06-06"
-        assert row["updated"].startswith("2026-06-06T12:00:00")
-        assert row["name"] == "New note"
+        held = _rows(archive)["note.md"]["updated"]
+        _commit(work, "catalog", "2026-03-03T08:00:00-05:00")
+        subprocess.run(["git", "clone", f"file://{work}", str(clone)], check=True, capture_output=True)
+        carchive = clone / ".agent" / "plan-history"
+        before = (carchive / "manifest.json").read_bytes()
+        ri.main(["--archive", str(carchive)])
+        assert (carchive / "manifest.json").read_bytes() == before
+        assert _rows(carchive)["note.md"]["updated"] == held
+        assert held != "2026-03-03T08:00:00-05:00"
     finally:
         shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(clone, ignore_errors=True)
 
 
-def test_merge_resolution_uses_the_merge_timestamp():
-    """A resolution different from both parents is the note's updated time."""
-    work = Path(tempfile.mkdtemp(prefix="ph-merge-"))
-    try:
-        _init(work)
-        archive = work / ".agent" / "plan-history"
-        archive.mkdir(parents=True)
-        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
-        note = archive / "note.md"
-        note.write_text("# Note\n\nbase\n", encoding="utf-8")
-        _commit(work, "base", "2026-02-01T10:00:00-05:00")
-        ri.main(["--archive", str(archive)])
-        _commit(work, "catalog", "2026-02-01T11:00:00-05:00")
-        _git(work, "branch", "left")
-        _git(work, "checkout", "left")
-        note.write_text("# Note\n\nleft side change\n", encoding="utf-8")
-        _commit(work, "left", "2026-02-02T10:00:00-05:00")
-        _git(work, "checkout", "master")
-        note.write_text("# Note\n\nright side change\n", encoding="utf-8")
-        _commit(work, "right", "2026-02-03T10:00:00-05:00")
-        merged = subprocess.run(["git", "-C", str(work), "merge", "left", "--no-commit"], capture_output=True)
-        assert merged.returncode != 0
-        note.write_text("# Note\n\nresolved neither parent\n", encoding="utf-8")
-        _commit(work, "merge resolved", "2026-02-04T10:00:00-05:00")
-        ri.main(["--archive", str(archive)])
-        row = _rows(archive)["note.md"]
-        assert row["date"] == "2026-02-01"
-        assert row["updated"] == "2026-02-04T10:00:00-05:00"
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-
-
-def test_catalog_date_does_not_survive_a_new_lifetime():
-    """An existing catalog row must not date the next note that reuses the filename."""
-    work = Path(tempfile.mkdtemp(prefix="ph-catalog-reuse-"))
-    try:
-        _init(work)
-        archive = work / ".agent" / "plan-history"
-        archive.mkdir(parents=True)
-        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
-        (archive / "note.md").write_text("# Old note\n\nold body\n", encoding="utf-8")
-        _commit(work, "add", "2024-04-04T12:00:00-05:00")
-        ri.main(["--archive", str(archive)])
-        _commit(work, "catalog", "2024-04-04T13:00:00-05:00")
-        assert _rows(archive)["note.md"]["date"] == "2024-04-04"
-        _git(work, "rm", ".agent/plan-history/note.md")
-        _commit(work, "delete", "2025-05-05T12:00:00-05:00")
-        (archive / "note.md").write_text("# New note\n\nbrand new 2026\n", encoding="utf-8")
-        _commit(work, "reuse", "2026-06-06T12:00:00-05:00")
-        ri.main(["--archive", str(archive)])
-        row = _rows(archive)["note.md"]
-        assert row["date"] == "2026-06-06"
-        assert row["name"] == "New note"
-        assert row["updated"].startswith("2026-06-06T12:00:00")
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-
-
-def test_ordinary_edit_keeps_the_catalog_date():
+def test_edit_changes_only_updated_and_hash():
     work = Path(tempfile.mkdtemp(prefix="ph-edit-"))
     try:
         _init(work)
-        archive = work / ".agent" / "plan-history"
-        archive.mkdir(parents=True)
-        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
+        archive = _archive(work)
         note = archive / "note.md"
         note.write_text("# Same note\n\nversion one\n", encoding="utf-8")
         _commit(work, "add", "2024-04-04T12:00:00-05:00")
         ri.main(["--archive", str(archive)])
         _commit(work, "catalog", "2024-04-04T13:00:00-05:00")
+        before = _rows(archive)["note.md"]
         note.write_text("# Same note\n\nversion two\n", encoding="utf-8")
-        _commit(work, "edit", "2026-06-06T12:00:00-05:00")
+        ri.main(["--archive", str(archive)])
+        after = _rows(archive)["note.md"]
+        changed = [key for key in before if before[key] != after[key]]
+        assert changed == ["updated", "content_sha256"]
+        assert after["date"] == before["date"]
+        mid = (archive / "manifest.json").read_bytes()
+        ri.main(["--archive", str(archive)])
+        assert (archive / "manifest.json").read_bytes() == mid
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_legacy_catalog_only_gains_hashes():
+    work = Path(tempfile.mkdtemp(prefix="ph-legacy-"))
+    try:
+        _init(work)
+        archive = _archive(work)
+        (archive / "note.md").write_text("# Legacy\n\nbody\n", encoding="utf-8")
+        _commit(work, "add", "2024-04-04T12:00:00-05:00")
+        catalog = json.dumps(
+            [
+                {
+                    "file": "note.md",
+                    "date": "2018-08-08",
+                    "updated": "2018-08-08T01:02:03-05:00",
+                    "name": "Legacy",
+                    "overview": "",
+                    "todos": {},
+                }
+            ],
+            indent=2,
+        )
+        (archive / "manifest.json").write_text(catalog + "\n", encoding="utf-8")
         ri.main(["--archive", str(archive)])
         row = _rows(archive)["note.md"]
-        assert row["date"] == "2024-04-04"
-        assert row["updated"] == "2026-06-06T12:00:00-05:00"
+        assert row["date"] == "2018-08-08"
+        assert row["updated"] == "2018-08-08T01:02:03-05:00"
+        assert len(row["content_sha256"]) == 64
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
-def test_rename_then_reusing_the_old_name_keeps_both_lifetimes():
-    """The renamed note keeps 2024; a new note at the old name is dated 2026."""
-    work = Path(tempfile.mkdtemp(prefix="ph-rename-reuse-"))
+def test_crlf_bytes_hash_the_same_as_lf():
+    text = "# Note\n\nbody\n"
+    lf = Path(tempfile.mkdtemp(prefix="ph-lf-")) / "note.md"
+    crlf = Path(tempfile.mkdtemp(prefix="ph-crlf-")) / "note.md"
     try:
-        _init(work)
-        archive = work / ".agent" / "plan-history"
-        archive.mkdir(parents=True)
-        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
-        (archive / "old.md").write_text("# Renamed note\n\noriginal\n", encoding="utf-8")
-        _commit(work, "add", "2024-04-04T12:00:00-05:00")
-        _git(work, "mv", ".agent/plan-history/old.md", ".agent/plan-history/new.md")
-        _commit(work, "rename", "2025-05-05T12:00:00-05:00")
-        (archive / "old.md").write_text("# Replacement note\n\nadded in 2026\n", encoding="utf-8")
-        _commit(work, "reuse old name", "2026-06-06T12:00:00-05:00")
-        ri.main(["--archive", str(archive)])
-        rows = _rows(archive)
-        assert rows["new.md"]["date"] == "2024-04-04"
-        assert rows["new.md"]["name"] == "Renamed note"
-        assert rows["old.md"]["date"] == "2026-06-06"
-        assert rows["old.md"]["name"] == "Replacement note"
+        lf.write_text(text, encoding="utf-8")
+        crlf.write_bytes(text.encode("utf-8").replace(b"\n", b"\r\n"))
+        assert ri.content_sha256(lf) == ri.content_sha256(crlf)
     finally:
-        shutil.rmtree(work, ignore_errors=True)
-
-
-def test_rename_keeps_the_original_add_date():
-    work = Path(tempfile.mkdtemp(prefix="ph-rename-"))
-    try:
-        _init(work)
-        archive = work / ".agent" / "plan-history"
-        archive.mkdir(parents=True)
-        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
-        (archive / "old.md").write_text("# Renamed note\n\nbody\n", encoding="utf-8")
-        _commit(work, "add", "2024-04-04T12:00:00-05:00")
-        _git(work, "mv", ".agent/plan-history/old.md", ".agent/plan-history/new.md")
-        _commit(work, "rename", "2025-05-05T12:00:00-05:00")
-        ri.main(["--archive", str(archive)])
-        row = _rows(archive)["new.md"]
-        assert row["date"] == "2024-04-04"
-        assert "old.md" not in _rows(archive)
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(lf.parent, ignore_errors=True)
+        shutil.rmtree(crlf.parent, ignore_errors=True)
 
 
 if __name__ == "__main__":
-    test_shallow_clone_does_not_store_boundary_updated()
-    test_reused_filename_uses_the_new_add_date()
-    test_rename_then_reusing_the_old_name_keeps_both_lifetimes()
-    test_rename_keeps_the_original_add_date()
-    test_merge_resolution_uses_the_merge_timestamp()
-    test_catalog_date_does_not_survive_a_new_lifetime()
-    test_ordinary_edit_keeps_the_catalog_date()
+    test_dirty_refresh_is_stable_on_the_second_run()
+    test_fresh_clone_keeps_the_recorded_updated()
+    test_edit_changes_only_updated_and_hash()
+    test_legacy_catalog_only_gains_hashes()
+    test_crlf_bytes_hash_the_same_as_lf()
     print("ok")

@@ -26,7 +26,6 @@ BODY_DATE_RE = re.compile(r"^- Date:\s*(\d{4}-\d{2}-\d{2})\s*$", re.M)
 HEADING_RE = re.compile(r"^# (?!#)(.+?)\s*$", re.M)
 STATUS_RE = re.compile(r"^\s+status:\s*(\w+)\s*$", re.M)
 ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$")
-COMMIT_RE = re.compile(r"^([0-9a-f]{40})\t(" + ISO_RE.pattern[1:-1] + r")$")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 SHALLOW_WARNING = "warning: shallow git clone; plan dates may be incomplete. Run git fetch --unshallow for full history."
@@ -141,32 +140,23 @@ def parse_name_status(line: str) -> tuple[str, list[str]]:
     return parts[0][:1], parts[1:]
 
 
-def collect_history(archive: Path, root: Path, live_names: set[str]) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
-    """One log pass: newest author date, each live file's first add, and that add's commit.
+def collect_history(archive: Path, root: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """One log pass: newest author date, and the oldest add of each filename.
 
-    `-c` lists a merge's resolution when the result differs from both parents, so
-    `updated` can use the merge commit. A rename stays with that file. A later
-    note that reuses the old filename starts at its own add.
+    Git dates are only a fallback for notes with no recorded date. Shallow
+    clones, renames, reused names, and merges can be wrong; set frontmatter `date`.
     """
-    output = git_stdout(archive, "log", "-c", "-M", "--name-status", "--format=%H%x09%aI", "--", ".")
+    output = git_stdout(archive, "log", "--name-status", "--format=%aI", "--", ".")
     if output is None:
-        return {}, {}, {}
+        return {}, {}
     latest: dict[str, str] = {}
-    # Walking newest-first, each live note is traced back through renames until
-    # the add that created it. A delete or an earlier file at the same path is
-    # a different note.
-    path_id = {name: name for name in live_names}
-    born: dict[str, str] = {}
-    birth_commit: dict[str, str] = {}
+    added: dict[str, str] = {}
     current: str | None = None
-    commit_sha: str | None = None
     for line in output.splitlines():
         if not line.strip():
             continue
-        header = COMMIT_RE.fullmatch(line.strip())
-        if header:
-            commit_sha = header.group(1)
-            current = header.group(2)
+        if ISO_RE.fullmatch(line.strip()):
+            current = line.strip()
             continue
         if current is None:
             continue
@@ -178,43 +168,10 @@ def collect_history(archive: Path, root: Path, live_names: set[str]) -> tuple[di
                 names.append(name)
         if code == "A":
             for name in names:
-                ident = path_id.get(name)
-                if ident is not None and commit_sha is not None:
-                    born[ident] = current
-                    birth_commit[ident] = commit_sha
-                    path_id.pop(name, None)
-        elif code == "D":
-            for name in names:
-                path_id.pop(name, None)
-        elif code == "R" and len(names) == 2:
-            old, new = names
-            ident = path_id.pop(new, None)
-            if ident is not None and old not in path_id:
-                path_id[old] = ident
+                added[name] = current
         for name in names:
             latest.setdefault(name, current)
-    return latest, born, birth_commit
-
-
-def hash_in_lifetime(root: Path, archive: Path, filename: str, recorded_sha: str, birth_commit: str) -> bool:
-    """True when the catalog hash appears in this note's lifetime, through its add commit."""
-    try:
-        rel = (archive.resolve() / filename).relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return False
-    listing = git_stdout(root, "log", "--format=%H", "--", rel)
-    if listing is None:
-        return False
-    for sha in listing.splitlines():
-        sha = sha.strip()
-        if not sha:
-            continue
-        blob = git_bytes(root, "show", f"{sha}:{rel}")
-        if blob is not None and normalized_sha256(blob) == recorded_sha:
-            return True
-        if sha == birth_commit:
-            break
-    return False
+    return latest, added
 
 
 def dirty_names(archive: Path, root: Path) -> set[str]:
@@ -266,23 +223,6 @@ def plan_todos(text: str) -> dict[str, int]:
     for status in STATUS_RE.findall(text):
         counts[status] = counts.get(status, 0) + 1
     return counts
-
-
-def updated_needs_git(
-    *,
-    filename: str,
-    clean: bool,
-    latest: dict[str, str],
-    recorded: str | None,
-    recorded_sha: str | None,
-    content_sha: str,
-) -> bool:
-    """True when rule 3 would take `updated` from git rather than the manifest."""
-    if recorded and recorded_sha is not None and recorded_sha == content_sha:
-        return False
-    if recorded and recorded_sha is None and clean:
-        return False
-    return bool(clean and filename in latest)
 
 
 def resolve_updated(
@@ -375,49 +315,26 @@ def refresh(archive: Path) -> None:
     latest: dict[str, str] = {}
     first_add: dict[str, str] = {}
     dirty: set[str] = set()
-    births: dict[str, str] = {}
     if root is not None:
         shallow = is_shallow(archive)
-        live_names = {path.name for path in archive.glob("*.md") if path.name not in SKIP_NOTES}
-        latest, first_add, births = collect_history(archive, root, live_names)
+        latest, first_add = collect_history(archive, root)
         dirty = dirty_names(archive, root)
+    if shallow:
+        print(SHALLOW_WARNING, file=sys.stderr)
 
     now = datetime.now().astimezone()
     today = now.strftime("%Y-%m-%d")
     now_iso = now.isoformat(timespec="seconds")
     plans = []
-    blocked: list[str] = []
     for path in sorted(p for p in archive.glob("*.md") if p.name not in SKIP_NOTES):
         text = path.read_text(encoding="utf-8", errors="replace")
-        date = explicit_date(text, path.name, {})
-        recorded_date = manifest_dates.get(path.name)
-        recorded_sha = manifest_shas.get(path.name)
         digest = content_sha256(path)
-        if date is None and recorded_date is not None:
-            birth = births.get(path.name)
-            same_note = recorded_sha is None or recorded_sha == digest
-            if not same_note and root is not None and birth is not None:
-                same_note = hash_in_lifetime(root, archive, path.name, recorded_sha, birth)
-            if same_note:
-                date = recorded_date
+        date = explicit_date(text, path.name, manifest_dates)
         if date is None and path.name in first_add:
-            if shallow:
-                blocked.append(path.name)
-                continue
             date = first_add[path.name][:10]
         elif date is None:
             date = today
         clean = path.name not in dirty and path.name in latest
-        recorded = manifest_updated.get(path.name)
-        if shallow and updated_needs_git(
-            filename=path.name,
-            clean=clean,
-            latest=latest,
-            recorded=recorded,
-            recorded_sha=recorded_sha,
-            content_sha=digest,
-        ):
-            blocked.append(path.name)
         plans.append(
             {
                 "file": path.name,
@@ -426,8 +343,8 @@ def refresh(archive: Path) -> None:
                     filename=path.name,
                     clean=clean,
                     latest=latest,
-                    recorded=recorded,
-                    recorded_sha=recorded_sha,
+                    recorded=manifest_updated.get(path.name),
+                    recorded_sha=manifest_shas.get(path.name),
                     content_sha=digest,
                     now_iso=now_iso,
                 ),
@@ -437,15 +354,6 @@ def refresh(archive: Path) -> None:
                 "todos": plan_todos(text),
             }
         )
-    if blocked:
-        print(
-            "error: shallow git clone; refusing to take a git date for: " + ", ".join(sorted(set(blocked))),
-            file=sys.stderr,
-        )
-        print("Run git fetch --unshallow for full history.", file=sys.stderr)
-        raise SystemExit(1)
-    if shallow:
-        print(SHALLOW_WARNING, file=sys.stderr)
 
     plans.sort(key=lambda row: row["file"])
     plans.sort(key=lambda row: stamp_key(row["updated"]), reverse=True)

@@ -1,3 +1,4 @@
+// ci path-filter probe: frontend-only
 export const isGt = (x, y) => x > y;
 export const isZero = (x) => 0 === x;
 export const isNumber = (x) => !isNaN(x) && x === 0 + x;

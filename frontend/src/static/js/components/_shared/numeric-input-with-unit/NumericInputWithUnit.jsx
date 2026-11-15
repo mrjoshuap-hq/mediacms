@@ -80,10 +80,20 @@ export function NumericInputWithUnit(props) {
         return ret;
     }
 
+    // Sync from props only when they change. If the parent just echoed back the
+    // value the user typed ('' is echoed as 0), keep the user's text as is.
     useEffect(() => {
-        setCurrentValue(setValue(0 + props.defaultValue, props.minValue, props.maxValue));
+        setCurrentValue((prev) =>
+            null !== prev && Number(prev) === props.defaultValue
+                ? prev
+                : setValue(0 + props.defaultValue, props.minValue, props.maxValue)
+        );
+    }, [props.defaultValue, props.minValue, props.maxValue]);
+
+    // `units` must be a stable reference (callers keep it in state or a module constant).
+    useEffect(() => {
         setCurrentUnit(setUnit(props.defaultUnit, props.units));
-    });
+    }, [props.defaultUnit, props.units]);
 
     return (
         <div className="num-value-unit">

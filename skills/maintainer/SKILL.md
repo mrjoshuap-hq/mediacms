@@ -51,20 +51,20 @@ An upstream draft that Joshua has actually reviewed uses this footer instead:
 
 Do not add "Reviewed by" unless Joshua reviewed that draft. Replace `<agent name>` with the agent's name, for example `Grok Bot`.
 
-Bot commits carry both trailers. `Assisted-by` is exactly `Assisted-by: Grok Bot (<role>)`. `<role>` is the bot's role, for example `Docs/DevRel`. Bot commits are signed off as Joshua (`Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`). Put `Assisted-by` before that sign-off line.
+Agent commits carry `Assisted-by: Grok Bot (<role>)` only. `<role>` is the bot's role, for example `Docs/DevRel`. A platform hook may also append `Co-authored-by`. Agents never add `Signed-off-by` and never sign off as Joshua. The squash-merge commit is the only commit that gets `Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`. The merger adds that line in the squash-merge message at merge time.
 
 Release notes an agent writes (a release issue, a release-note comment, or a hand-written GitHub Release body) get the footer. The published What's new page ends with the same footer: `scripts/prepare_docs_build.py` appends it when it generates `docs/en/reference/whats-new.md` for a fork channel. Leave the footer out of the notes body in `docs/_shared/fork-whats-new.md`, `CHANGELOG.md`, and the `INSTALL-*.md` asset `release.yml` publishes. `AGENTS.md` already forbids hand-editing `CHANGELOG.md`. Do not hand-edit the generated what's-new page.
 
 ## Commits, signing, and authorship
 
 - Follow Conventional Commits from `AGENTS.md`. Do not bump `package.json` or hand-edit `CHANGELOG.md`.
-- Bot commits carry both trailers. `Assisted-by` is exactly `Assisted-by: Grok Bot (<role>)`. `<role>` is the bot's role, for example `Docs/DevRel`.
-- Bot commits are signed off as Joshua (`Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`). Write that sign-off line in the commit message, after `Assisted-by`. Author and committer stay the agent's git identity. The sign-off trailer does not make the author Joshua.
+- Agent commits carry `Assisted-by: Grok Bot (<role>)` only. `<role>` is the bot's role, for example `Docs/DevRel`. Agents never add `Signed-off-by` and never sign off as Joshua.
+- The squash-merge commit is the only commit that gets `Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`. The merger adds that line in the squash-merge message at merge time. Author and committer on an agent commit stay the agent's git identity.
 - Agent-authored commits use the agent's own git identity for author and committer. Do not set the author or committer to Josh Preston or `mrjoshuap@users.noreply.github.com`.
 - A platform hook may append `Co-authored-by: Josh Preston <mrjoshuap@users.noreply.github.com>`. Leave that trailer in place. Do not add it yourself, and do not treat it as Joshua's signature or as a claim that he wrote the diff.
-- The `Signed-off-by` line is the sign-off trailer Joshua specified. Do not forge a cryptographic signature and do not use Joshua's key. If a cryptographic signature is required and the agent cannot sign, stop and ask Joshua.
+- Do not forge a cryptographic signature and do not use Joshua's key. If a cryptographic signature is required and the agent cannot sign, stop and ask Joshua.
 - Do not rewrite published history so that an agent commit's author looks like Joshua. Decision D4 keeps Joshua's `AGENTS.md` history intact; the same restraint applies to the rest of the branch.
-- Do not present an address, including the noreply GitHub address, as a mailbox someone can reach. The sign-off identity above is the trailer Joshua specified. It is not a contact address.
+- Do not present an address, including the noreply GitHub address, as a mailbox someone can reach. The squash-merge sign-off identity above is the trailer Joshua specified for the merge commit. It is not a contact address.
 
 ## Ask Joshua
 

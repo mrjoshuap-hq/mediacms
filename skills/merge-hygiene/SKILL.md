@@ -17,6 +17,7 @@ description: Safely merge or sync branches into mediacms-next while preserving f
    - Docs / `fork-whats-new` if user-facing behavior changed (skill `fork-docs-release`)
 6. Bots force-push only their own pull request branches. Never force-push a shared branch (`main`, `mediacms-next`, or anyone else's branch).
 7. When you write a pull request description, review, or merge comment, follow the AI disclosure rule in `skills/maintainer/SKILL.md`. Leave the PR template AI disclosure and Attestation checkboxes unticked.
+8. A squash merge is the only commit that gets `Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`. The merger adds that line in the squash-merge message at merge time. Agent commits on the branch carry `Assisted-by: Grok Bot (<role>)` only, plus `Co-authored-by` when a platform hook appends it. Agents never sign off as Joshua.
 
 ## Additional resources
 

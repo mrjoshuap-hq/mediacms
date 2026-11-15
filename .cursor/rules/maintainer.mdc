@@ -9,4 +9,4 @@ Every agent-produced artifact ends with:
 
 `_AI disclosure: drafted by an AI agent (<agent name>) for @mrjoshuap._`
 
-Agent-authored commits include both `Assisted-by: Grok Bot (<role>)` and `Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`. Bot commits are signed off as Joshua (`mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`). Leave the PR template AI disclosure and Attestation checkboxes unticked.
+Agent commits carry `Assisted-by: Grok Bot (<role>)` only, plus `Co-authored-by` when a platform hook appends it. Agents never sign off as Joshua. The merger adds `Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>` in the squash-merge message at merge time. Leave the PR template AI disclosure and Attestation checkboxes unticked.

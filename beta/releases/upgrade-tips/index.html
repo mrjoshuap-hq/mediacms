@@ -3729,7 +3729,7 @@
 <div class="admonition danger">
 <p class="admonition-title">Pick the line on purpose</p>
 <ul>
-<li>Production that must stay still: pin <code>v10.0.0.YYYYMMDD</code> or use <code>:stable</code>. Never float on <code>:beta</code>.</li>
+<li>Production that must stay still: pin <code>:10.0.0.YYYYMMDD[.N]</code> or use <code>:stable</code>. Never float on <code>:beta</code>.</li>
 <li>Early testing: <code>:beta</code> is fine on a disposable portal. Expect daily churn.</li>
 <li>Leaving upstream ≤v9: treat the cutover as a <strong>site upgrade</strong>, not a casual image bump.</li>
 </ul>
@@ -3812,7 +3812,7 @@
 </tr>
 <tr>
 <td>Fixed fork build</td>
-<td><code>ghcr.io/mrjoshuap/mediacms:v10.0.0.YYYYMMDD</code></td>
+<td><code>ghcr.io/mrjoshuap/mediacms:10.0.0.YYYYMMDD[.N]</code></td>
 </tr>
 <tr>
 <td>Upgrade drill aliases</td>
@@ -3828,11 +3828,11 @@
 <p>Example Compose override for a <strong>pinned</strong> beta stamp:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">web</span><span class="p">:</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/mrjoshuap/mediacms:v10.0.0.20261114</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/mrjoshuap/mediacms:10.0.0.20261114</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">celery_worker</span><span class="p">:</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/mrjoshuap/mediacms:v10.0.0.20261114</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/mrjoshuap/mediacms:10.0.0.20261114</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">celery_beat</span><span class="p">:</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/mrjoshuap/mediacms:v10.0.0.20261114</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/mrjoshuap/mediacms:10.0.0.20261114</span>
 </code></pre></div>
 <h2 id="apply-migrations">Apply migrations<a class="headerlink" href="#apply-migrations" title="Permanent link">&para;</a></h2>
 <h3 id="normal-compose-update">Normal Compose update<a class="headerlink" href="#normal-compose-update" title="Permanent link">&para;</a></h3>

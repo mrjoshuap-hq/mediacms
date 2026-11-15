@@ -3666,7 +3666,7 @@
 <td>Latest stable <strong>full</strong> release</td>
 </tr>
 <tr>
-<td><code>ghcr.io/mrjoshuap/mediacms:v10.0.0.YYYYMMDD</code></td>
+<td><code>ghcr.io/mrjoshuap/mediacms:10.0.0.YYYYMMDD[.N]</code></td>
 <td>Immutable pin for one release</td>
 </tr>
 <tr>
@@ -3679,7 +3679,7 @@
 </tr>
 </tbody>
 </table>
-<p>Beta builds publish a GitHub <strong>pre-release</strong> on every push to <code>mediacms-next</code>. Stable releases publish only when a stamp tag <code>v10.0.0.YYYYMMDD</code> (or <code>v10.0.0.YYYYMMDD.N</code> for a same-day emergency) is pushed from <code>main</code>. The product base version lives in <code>version/FORK_VERSION</code>.</p>
+<p>Beta builds publish a GitHub <strong>pre-release</strong> on every push to <code>mediacms-next</code>. Stable releases publish only when a Git stamp tag <code>v10.0.0.YYYYMMDD</code> (or <code>v10.0.0.YYYYMMDD.N</code> for a same-day emergency) is pushed from <code>main</code>. The product base version lives in <code>version/FORK_VERSION</code>. The Git tag keeps the <code>v</code> prefix. The GHCR image tag drops it (<code>10.0.0.YYYYMMDD</code> or <code>10.0.0.YYYYMMDD.N</code>).</p>
 <p>Upstream Docker Hub images remain available as <code>MEDIACMS_IMAGE=mediacms/mediacms:latest</code> if you want them.</p>
 <h2 id="enable-whisper-transcription-optional">Enable Whisper transcription (optional)<a class="headerlink" href="#enable-whisper-transcription-optional" title="Permanent link">&para;</a></h2>
 <p>Whisper creates subtitles automatically. It works only in the Docker installation. It needs a <strong>full</strong> image (<code>make docker-build-full</code> → <code>mediacms:full</code>, or set <code>MEDIACMS_FULL_IMAGE</code> to a GHCR/upstream full tag).</p>

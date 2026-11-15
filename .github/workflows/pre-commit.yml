@@ -17,6 +17,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package.json
+            frontend-tools/video-js/package-lock.json
+            frontend-tools/video-editor/package-lock.json
+            frontend-tools/chapters-editor/package-lock.json
 
       - name: Install frontend dependencies
         run: |
@@ -26,6 +32,7 @@ jobs:
           npm ci --prefix frontend-tools/video-editor
           npm ci --prefix frontend-tools/chapters-editor
 
-      - uses: pre-commit/action@v3.0.0
+      # pre-commit/action v3.0.1 (inner actions/cache@v4). Pinned to a full SHA.
+      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

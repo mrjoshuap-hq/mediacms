@@ -24,10 +24,10 @@ on:
     paths-ignore:
       - '**/README.md'
 
-# Superseded pull requests cancel. Pushes to main and mediacms-next do not:
-# cancel-in-progress stays false for push, so a later push cannot abort CI.
+# Push and dispatch runs are per-run and never cancel or displace each other;
+# only superseded PR runs cancel.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

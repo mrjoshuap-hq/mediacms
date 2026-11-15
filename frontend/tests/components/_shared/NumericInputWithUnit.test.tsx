@@ -211,6 +211,42 @@ describe('components/_shared', () => {
             expect(height().value).toBe('360');
         });
 
+        test('a bounds-only prop change reclamps the displayed value', () => {
+            const { container, rerender } = render(
+                <NumericInputWithUnit
+                    defaultValue={20}
+                    defaultUnit="px"
+                    minValue={1}
+                    maxValue={100}
+                    units={persistedUnits}
+                />
+            );
+            const input = () => container.querySelector('input.value-input') as HTMLInputElement;
+            expect(input().value).toBe('20');
+
+            rerender(
+                <NumericInputWithUnit
+                    defaultValue={20}
+                    defaultUnit="px"
+                    minValue={1}
+                    maxValue={10}
+                    units={persistedUnits}
+                />
+            );
+            expect(input().value).toBe('10');
+
+            rerender(
+                <NumericInputWithUnit
+                    defaultValue={20}
+                    defaultUnit="px"
+                    minValue={30}
+                    maxValue={100}
+                    units={persistedUnits}
+                />
+            );
+            expect(input().value).toBe('30');
+        });
+
         test('a real parent prop change still applies, clamped', () => {
             const { container, rerender } = render(
                 <NumericInputWithUnit defaultValue={20} defaultUnit="px" units={persistedUnits} />

@@ -37,6 +37,7 @@ function setUnit(value, units) {
 export function NumericInputWithUnit(props) {
     const valueInputRef = useRef(null);
     const valueUnitRef = useRef(null);
+    const appliedBoundsRef = useRef({ min: props.minValue, max: props.maxValue });
 
     const [currentValue, setCurrentValue] = useState(null);
     const [currentUnit, setCurrentUnit] = useState(null);
@@ -81,10 +82,15 @@ export function NumericInputWithUnit(props) {
     }
 
     // Sync from props only when they change. If the parent just echoed back the
-    // value the user typed ('' is echoed as 0), keep the user's text as is.
+    // value the user typed ('' is echoed as 0) and the bounds did not change,
+    // keep the user's text as is. A min/max change is not an echo: reclamp.
     useEffect(() => {
+        const boundsChanged =
+            appliedBoundsRef.current.min !== props.minValue || appliedBoundsRef.current.max !== props.maxValue;
+        appliedBoundsRef.current = { min: props.minValue, max: props.maxValue };
+
         setCurrentValue((prev) =>
-            null !== prev && Number(prev) === props.defaultValue
+            !boundsChanged && null !== prev && Number(prev) === props.defaultValue
                 ? prev
                 : setValue(0 + props.defaultValue, props.minValue, props.maxValue)
         );

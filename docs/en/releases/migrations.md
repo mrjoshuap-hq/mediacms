@@ -16,13 +16,14 @@ Database and model changes that matter when you leave **upstream ≤v9** for for
 | `files` | `0022_upgradedecision` | Creates `UpgradeDecision` | No | Yes |
 | `files` | `0023_alter_media_password` | Hashed `Media.password` for password-protected media | No | Yes |
 | `files` | `0024_sharded_media_paths` | New `upload_to` path helpers for poster, sprites, thumbnail, and uploaded poster fields. It moves no files. Old files stay where they are until a manager runs **Migrate paths** | No / different | Yes |
-| `actions` | `0005` … `0007` | MediaAction indexes and action choices (integrity, `fs_imported`, `fs_original_gone`, `fs_pruned`, `path_migrated`) | Partial | Yes |
+| `actions` | `0004` … `0007` | MediaAction options, indexes, and action choices (integrity, `fs_imported`, `fs_original_gone`, `fs_pruned`, `path_migrated`) | Partial | Yes |
 | `migrationservice` | `0002_provider_filesystem` | Adds `filesystem` to the `MigrationService.provider` choices | No | Yes |
+| `users` | `0003_remove_user_media_count` | Removes the `User.media_count` column. Counts come from listable media at query time. A backward migrate does not restore the old values | No | Yes |
 
 Exact names can grow. After you pull an image, list pending migrations:
 
 ```bash
-python manage.py showmigrations files actions migrationservice
+python manage.py showmigrations files actions migrationservice users
 python manage.py migrate --plan
 ```
 
@@ -47,6 +48,7 @@ docker compose -f docker-compose-dev.yaml exec -T web python manage.py showmigra
 | MediaAction action choices / indexes | Partial | Yes | Moderation, integrity, filesystem sync, and path migrate audit |
 | `MigrationService.provider` `filesystem` choice | No | Yes | Content migration from a mounted library. No new Media columns |
 | Encoding status index | Partial | Yes | Processing list performance |
+| `User.media_count` | Yes | No | Custom code or reports that read this field must count listable media instead |
 
 ## Apply path (normal image update)
 

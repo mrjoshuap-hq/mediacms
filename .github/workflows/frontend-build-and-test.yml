@@ -4,9 +4,13 @@ on:
     workflow_call:
     workflow_dispatch:
 
+# github.workflow is the caller name, so CI and Release get different groups
+# and cannot cancel each other. The frontend- prefix keeps this group distinct
+# from the caller's own group (same name would deadlock the caller).
+# Only pull_request runs cancel; push and Release (and workflow_dispatch) do not.
 concurrency:
-    group: frontend-${{ github.head_ref || github.ref }}
-    cancel-in-progress: true
+    group: frontend-${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
     build-and-test:

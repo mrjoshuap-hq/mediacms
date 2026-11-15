@@ -13,6 +13,13 @@ on:
       - mediacms-next
     paths-ignore:
       - '**/README.md'
+
+# Superseded pull requests cancel. Pushes to main and mediacms-next do not:
+# cancel-in-progress stays false for push, so a later push cannot abort CI.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   pre-commit:
     uses: ./.github/workflows/pre-commit.yml

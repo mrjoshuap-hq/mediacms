@@ -39,16 +39,19 @@ jobs:
 
       - name: Resolve owner and version
         id: meta
+        env:
+          GHCR_OWNER_INPUT: ${{ inputs.ghcr_owner }}
+          VERSION_TAG: ${{ inputs.version_tag }}
+          CHANNEL: ${{ inputs.channel }}
         run: |
-          OWNER="${{ inputs.ghcr_owner }}"
+          OWNER="$GHCR_OWNER_INPUT"
           if [ -z "$OWNER" ]; then
-            OWNER="${{ github.repository_owner }}"
+            OWNER="$GITHUB_REPOSITORY_OWNER"
           fi
           OWNER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
-          TAG="${{ inputs.version_tag }}"
+          TAG="$VERSION_TAG"
           VERSION="${TAG#v}"
-          SHA7=$(echo "${{ github.sha }}" | cut -c1-7)
-          CHANNEL="${{ inputs.channel }}"
+          SHA7="${GITHUB_SHA::7}"
           if [ "$CHANNEL" != "beta" ] && [ "$CHANNEL" != "stable" ]; then
             echo "Invalid channel: $CHANNEL" >&2
             exit 1

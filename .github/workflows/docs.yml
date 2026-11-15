@@ -19,7 +19,9 @@ on:
   pull_request:
     # Docs paths, plus backend paths (OpenAPI is generated from the app),
     # plus this workflow. Push, tag, and workflow_dispatch stay unfiltered.
-    # Keep the lists aligned with the docs and backend filters in ci.yml.
+    # package.json, version/FORK_VERSION, and CHANGELOG.md are inputs to
+    # scripts/prepare_docs_build.py (version, what's-new, and changelog pages).
+    # Keep the other lists aligned with the docs and backend filters in ci.yml.
     paths:
       - "docs/**"
       - "mkdocs.yml"
@@ -27,6 +29,9 @@ on:
       - "scripts/prepare_docs_build.py"
       - "scripts/check_doc_scenarios.py"
       - ".agent/**"
+      - "package.json"
+      - "version/FORK_VERSION"
+      - "CHANGELOG.md"
       - "cms/**"
       - "files/**"
       - "users/**"

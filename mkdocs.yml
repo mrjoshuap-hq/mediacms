@@ -91,7 +91,7 @@ extra:
         provider: mike
     social:
         - icon: fontawesome/brands/github
-          link: https://github.com/mediacms-io/mediacms
+          link: https://github.com/mrjoshuap/mediacms
 
 nav:
     - Home: index.md

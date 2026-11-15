@@ -26,6 +26,7 @@ BODY_DATE_RE = re.compile(r"^- Date:\s*(\d{4}-\d{2}-\d{2})\s*$", re.M)
 HEADING_RE = re.compile(r"^# (?!#)(.+?)\s*$", re.M)
 STATUS_RE = re.compile(r"^\s+status:\s*(\w+)\s*$", re.M)
 ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$")
+COMMIT_RE = re.compile(r"^([0-9a-f]{40})\t(" + ISO_RE.pattern[1:-1] + r")$")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 SHALLOW_WARNING = "warning: shallow git clone; plan dates may be incomplete. Run git fetch --unshallow for full history."
@@ -77,21 +78,33 @@ def load_manifest(archive: Path) -> tuple[dict[str, str], dict[str, str], dict[s
     return dates, updated, shas
 
 
-def content_sha256(path: Path) -> str:
-    """SHA-256 of the file bytes with CR and CRLF normalised to LF."""
-    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+def normalized_sha256(data: bytes) -> str:
+    """SHA-256 of bytes with CR and CRLF normalised to LF."""
+    data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     return hashlib.sha256(data).hexdigest()
 
 
-def git_stdout(archive: Path, *args: str) -> str | None:
-    command = ["git", "--no-pager", "-C", str(archive), "-c", "core.quotepath=false", *args]
+def content_sha256(path: Path) -> str:
+    """SHA-256 of the file bytes with CR and CRLF normalised to LF."""
+    return normalized_sha256(path.read_bytes())
+
+
+def git_bytes(cwd: Path, *args: str) -> bytes | None:
+    command = ["git", "--no-pager", "-C", str(cwd), "-c", "core.quotepath=false", *args]
     try:
-        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        result = subprocess.run(command, check=False, capture_output=True)
     except OSError:
         return None
     if result.returncode != 0:
         return None
     return result.stdout
+
+
+def git_stdout(cwd: Path, *args: str) -> str | None:
+    payload = git_bytes(cwd, *args)
+    if payload is None:
+        return None
+    return payload.decode("utf-8", errors="replace")
 
 
 def repo_root(archive: Path) -> Path | None:
@@ -128,27 +141,32 @@ def parse_name_status(line: str) -> tuple[str, list[str]]:
     return parts[0][:1], parts[1:]
 
 
-def collect_history(archive: Path, root: Path, live_names: set[str]) -> tuple[dict[str, str], dict[str, str]]:
-    """One log pass: newest author date, and each live file's own first add.
+def collect_history(archive: Path, root: Path, live_names: set[str]) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """One log pass: newest author date, each live file's first add, and that add's commit.
 
-    A rename stays with that file. A later note that reuses the old filename
-    starts its own lifetime at its own add.
+    `-c` lists a merge's resolution when the result differs from both parents, so
+    `updated` can use the merge commit. A rename stays with that file. A later
+    note that reuses the old filename starts at its own add.
     """
-    output = git_stdout(archive, "log", "-M", "--name-status", "--format=%aI", "--", ".")
+    output = git_stdout(archive, "log", "-c", "-M", "--name-status", "--format=%H%x09%aI", "--", ".")
     if output is None:
-        return {}, {}
+        return {}, {}, {}
     latest: dict[str, str] = {}
     # Walking newest-first, each live note is traced back through renames until
     # the add that created it. A delete or an earlier file at the same path is
     # a different note.
     path_id = {name: name for name in live_names}
     born: dict[str, str] = {}
+    birth_commit: dict[str, str] = {}
     current: str | None = None
+    commit_sha: str | None = None
     for line in output.splitlines():
         if not line.strip():
             continue
-        if ISO_RE.fullmatch(line.strip()):
-            current = line.strip()
+        header = COMMIT_RE.fullmatch(line.strip())
+        if header:
+            commit_sha = header.group(1)
+            current = header.group(2)
             continue
         if current is None:
             continue
@@ -161,8 +179,9 @@ def collect_history(archive: Path, root: Path, live_names: set[str]) -> tuple[di
         if code == "A":
             for name in names:
                 ident = path_id.get(name)
-                if ident is not None:
+                if ident is not None and commit_sha is not None:
                     born[ident] = current
+                    birth_commit[ident] = commit_sha
                     path_id.pop(name, None)
         elif code == "D":
             for name in names:
@@ -174,7 +193,28 @@ def collect_history(archive: Path, root: Path, live_names: set[str]) -> tuple[di
                 path_id[old] = ident
         for name in names:
             latest.setdefault(name, current)
-    return latest, born
+    return latest, born, birth_commit
+
+
+def hash_in_lifetime(root: Path, archive: Path, filename: str, recorded_sha: str, birth_commit: str) -> bool:
+    """True when the catalog hash appears in this note's lifetime, through its add commit."""
+    try:
+        rel = (archive.resolve() / filename).relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return False
+    listing = git_stdout(root, "log", "--format=%H", "--", rel)
+    if listing is None:
+        return False
+    for sha in listing.splitlines():
+        sha = sha.strip()
+        if not sha:
+            continue
+        blob = git_bytes(root, "show", f"{sha}:{rel}")
+        if blob is not None and normalized_sha256(blob) == recorded_sha:
+            return True
+        if sha == birth_commit:
+            break
+    return False
 
 
 def dirty_names(archive: Path, root: Path) -> set[str]:
@@ -335,10 +375,11 @@ def refresh(archive: Path) -> None:
     latest: dict[str, str] = {}
     first_add: dict[str, str] = {}
     dirty: set[str] = set()
+    births: dict[str, str] = {}
     if root is not None:
         shallow = is_shallow(archive)
         live_names = {path.name for path in archive.glob("*.md") if path.name not in SKIP_NOTES}
-        latest, first_add = collect_history(archive, root, live_names)
+        latest, first_add, births = collect_history(archive, root, live_names)
         dirty = dirty_names(archive, root)
 
     now = datetime.now().astimezone()
@@ -348,7 +389,17 @@ def refresh(archive: Path) -> None:
     blocked: list[str] = []
     for path in sorted(p for p in archive.glob("*.md") if p.name not in SKIP_NOTES):
         text = path.read_text(encoding="utf-8", errors="replace")
-        date = explicit_date(text, path.name, manifest_dates)
+        date = explicit_date(text, path.name, {})
+        recorded_date = manifest_dates.get(path.name)
+        recorded_sha = manifest_shas.get(path.name)
+        digest = content_sha256(path)
+        if date is None and recorded_date is not None:
+            birth = births.get(path.name)
+            same_note = recorded_sha is None or recorded_sha == digest
+            if not same_note and root is not None and birth is not None:
+                same_note = hash_in_lifetime(root, archive, path.name, recorded_sha, birth)
+            if same_note:
+                date = recorded_date
         if date is None and path.name in first_add:
             if shallow:
                 blocked.append(path.name)
@@ -357,9 +408,7 @@ def refresh(archive: Path) -> None:
         elif date is None:
             date = today
         clean = path.name not in dirty and path.name in latest
-        digest = content_sha256(path)
         recorded = manifest_updated.get(path.name)
-        recorded_sha = manifest_shas.get(path.name)
         if shallow and updated_needs_git(
             filename=path.name,
             clean=clean,

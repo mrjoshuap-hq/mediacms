@@ -111,6 +111,86 @@ def test_reused_filename_uses_the_new_add_date():
         shutil.rmtree(work, ignore_errors=True)
 
 
+def test_merge_resolution_uses_the_merge_timestamp():
+    """A resolution different from both parents is the note's updated time."""
+    work = Path(tempfile.mkdtemp(prefix="ph-merge-"))
+    try:
+        _init(work)
+        archive = work / ".agent" / "plan-history"
+        archive.mkdir(parents=True)
+        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
+        note = archive / "note.md"
+        note.write_text("# Note\n\nbase\n", encoding="utf-8")
+        _commit(work, "base", "2026-02-01T10:00:00-05:00")
+        ri.main(["--archive", str(archive)])
+        _commit(work, "catalog", "2026-02-01T11:00:00-05:00")
+        _git(work, "branch", "left")
+        _git(work, "checkout", "left")
+        note.write_text("# Note\n\nleft side change\n", encoding="utf-8")
+        _commit(work, "left", "2026-02-02T10:00:00-05:00")
+        _git(work, "checkout", "master")
+        note.write_text("# Note\n\nright side change\n", encoding="utf-8")
+        _commit(work, "right", "2026-02-03T10:00:00-05:00")
+        merged = subprocess.run(["git", "-C", str(work), "merge", "left", "--no-commit"], capture_output=True)
+        assert merged.returncode != 0
+        note.write_text("# Note\n\nresolved neither parent\n", encoding="utf-8")
+        _commit(work, "merge resolved", "2026-02-04T10:00:00-05:00")
+        ri.main(["--archive", str(archive)])
+        row = _rows(archive)["note.md"]
+        assert row["date"] == "2026-02-01"
+        assert row["updated"] == "2026-02-04T10:00:00-05:00"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_catalog_date_does_not_survive_a_new_lifetime():
+    """An existing catalog row must not date the next note that reuses the filename."""
+    work = Path(tempfile.mkdtemp(prefix="ph-catalog-reuse-"))
+    try:
+        _init(work)
+        archive = work / ".agent" / "plan-history"
+        archive.mkdir(parents=True)
+        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
+        (archive / "note.md").write_text("# Old note\n\nold body\n", encoding="utf-8")
+        _commit(work, "add", "2024-04-04T12:00:00-05:00")
+        ri.main(["--archive", str(archive)])
+        _commit(work, "catalog", "2024-04-04T13:00:00-05:00")
+        assert _rows(archive)["note.md"]["date"] == "2024-04-04"
+        _git(work, "rm", ".agent/plan-history/note.md")
+        _commit(work, "delete", "2025-05-05T12:00:00-05:00")
+        (archive / "note.md").write_text("# New note\n\nbrand new 2026\n", encoding="utf-8")
+        _commit(work, "reuse", "2026-06-06T12:00:00-05:00")
+        ri.main(["--archive", str(archive)])
+        row = _rows(archive)["note.md"]
+        assert row["date"] == "2026-06-06"
+        assert row["name"] == "New note"
+        assert row["updated"].startswith("2026-06-06T12:00:00")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_ordinary_edit_keeps_the_catalog_date():
+    work = Path(tempfile.mkdtemp(prefix="ph-edit-"))
+    try:
+        _init(work)
+        archive = work / ".agent" / "plan-history"
+        archive.mkdir(parents=True)
+        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
+        note = archive / "note.md"
+        note.write_text("# Same note\n\nversion one\n", encoding="utf-8")
+        _commit(work, "add", "2024-04-04T12:00:00-05:00")
+        ri.main(["--archive", str(archive)])
+        _commit(work, "catalog", "2024-04-04T13:00:00-05:00")
+        note.write_text("# Same note\n\nversion two\n", encoding="utf-8")
+        _commit(work, "edit", "2026-06-06T12:00:00-05:00")
+        ri.main(["--archive", str(archive)])
+        row = _rows(archive)["note.md"]
+        assert row["date"] == "2024-04-04"
+        assert row["updated"] == "2026-06-06T12:00:00-05:00"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def test_rename_then_reusing_the_old_name_keeps_both_lifetimes():
     """The renamed note keeps 2024; a new note at the old name is dated 2026."""
     work = Path(tempfile.mkdtemp(prefix="ph-rename-reuse-"))
@@ -159,4 +239,7 @@ if __name__ == "__main__":
     test_reused_filename_uses_the_new_add_date()
     test_rename_then_reusing_the_old_name_keeps_both_lifetimes()
     test_rename_keeps_the_original_add_date()
+    test_merge_resolution_uses_the_merge_timestamp()
+    test_catalog_date_does_not_survive_a_new_lifetime()
+    test_ordinary_edit_keeps_the_catalog_date()
     print("ok")

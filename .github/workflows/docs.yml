@@ -17,6 +17,39 @@ on:
     # Upstream semver (v9.4.0) and fork stamp tags (v10.0.0.20251114[.N])
     tags: ["v*.*.*", "v*.*.*.*"]
   pull_request:
+    # Docs paths, plus backend paths (OpenAPI is generated from the app),
+    # plus this workflow. Push, tag, and workflow_dispatch stay unfiltered.
+    # Keep the lists aligned with the docs and backend filters in ci.yml.
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "requirements-docs.txt"
+      - "scripts/prepare_docs_build.py"
+      - "scripts/check_doc_scenarios.py"
+      - ".agent/**"
+      - "cms/**"
+      - "files/**"
+      - "users/**"
+      - "actions/**"
+      - "admin_customizations/**"
+      - "identity_providers/**"
+      - "rbac/**"
+      - "saml_auth/**"
+      - "uploader/**"
+      - "migrationservice/**"
+      - "lti/**"
+      - "lms-plugins/**"
+      - "cli-tool/**"
+      - "templates/**"
+      - "static/**"
+      - "fixtures/**"
+      - "tests/**"
+      - "manage.py"
+      - "conftest.py"
+      - "pytest.ini"
+      - ".coveragerc"
+      - "requirements*.txt"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:

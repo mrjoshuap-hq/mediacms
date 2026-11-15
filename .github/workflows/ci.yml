@@ -5,6 +5,16 @@ name: "CI"
 #   MEDIACMS_BETA_BRANCH   — beta / next line (default: mediacms-next)
 # Image publishing lives in release.yml (GHCR), not here.
 # `on.push.branches` cannot read vars; keep this list aligned with those names.
+#
+# Job selection: `changes` classifies the diff. `pre-commit` always runs.
+# `test` runs when backend, docker, shared config (`all`), or an unmapped
+# path (`other`) changed. `frontend` runs when frontend, `all`, or `other`
+# changed. A push to main, a new branch (before is all zeros), or a filter
+# error runs every job. `ci-gate` is the always-on check: a skipped job
+# passes only when `changes` said it was not needed. `full_suite` is true
+# when both product jobs were needed, so a later release step can tell a
+# docs-only green gate from a real suite (#90). Release does not call this
+# workflow.
 on:
   pull_request:
   push:
@@ -21,10 +31,402 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.decide.outputs.backend }}
+      docker: ${{ steps.decide.outputs.docker }}
+      frontend: ${{ steps.decide.outputs.frontend }}
+      docs: ${{ steps.decide.outputs.docs }}
+      meta: ${{ steps.decide.outputs.meta }}
+      demos: ${{ steps.decide.outputs.demos }}
+      all: ${{ steps.decide.outputs.all }}
+      other: ${{ steps.decide.outputs.other }}
+      test_needed: ${{ steps.decide.outputs.test_needed }}
+      frontend_needed: ${{ steps.decide.outputs.frontend_needed }}
+      full_suite: ${{ steps.decide.outputs.full_suite }}
+    steps:
+      - name: Decide whether path filters can run
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          # Empty on pull_request. On push, the previous commit (zeros on a new branch).
+          BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          run_filter=true
+          if [[ "$EVENT_NAME" == "push" && "$REF" == "refs/heads/main" ]]; then
+            run_filter=false
+          elif [[ "$EVENT_NAME" == "push" && -n "$BEFORE" && -z "${BEFORE//0/}" ]]; then
+            run_filter=false
+          fi
+          echo "run_filter=${run_filter}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout for push compare
+        id: checkout
+        if: steps.mode.outputs.run_filter == 'true' && github.event_name == 'push'
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # dorny/paths-filter v3.0.4 (tag v3). Pinned to a full SHA.
+      # Pull requests use the API. Pushes diff against github.event.before.
+      - name: Filter changed paths
+        id: filter
+        if: steps.mode.outputs.run_filter == 'true' && steps.checkout.outcome != 'failure' && steps.checkout.outcome != 'cancelled'
+        continue-on-error: true
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad
+        with:
+          base: ${{ github.event_name == 'push' && github.event.before || '' }}
+          filters: |
+            backend:
+              - 'cms/**'
+              - 'files/**'
+              - 'users/**'
+              - 'actions/**'
+              - 'admin_customizations/**'
+              - 'identity_providers/**'
+              - 'rbac/**'
+              - 'saml_auth/**'
+              - 'uploader/**'
+              - 'migrationservice/**'
+              - 'lti/**'
+              - 'lms-plugins/**'
+              - 'cli-tool/**'
+              - 'templates/**'
+              - 'static/**'
+              - 'fixtures/**'
+              - 'tests/**'
+              - 'manage.py'
+              - 'conftest.py'
+              - 'pytest.ini'
+              - '.coveragerc'
+              - 'requirements*.txt'
+            docker:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'docker-compose*.yaml'
+              - 'docker-compose/**'
+              - 'deploy/**'
+            frontend:
+              - 'frontend/**'
+              - 'frontend-tools/**'
+            docs:
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - 'requirements-docs.txt'
+              - 'scripts/prepare_docs_build.py'
+              - 'scripts/check_doc_scenarios.py'
+              - '.agent/**'
+            meta:
+              - 'AGENTS.md'
+              - 'CLAUDE.md'
+              - 'skills/**'
+              - '.agents/**'
+              - '.claude/**'
+              - '.cursor/**'
+              - '*.md'
+            # No demos tree yet. This matches nothing. Do not exclude a future
+            # demos path from `other`: those files run the full suite until the
+            # PR that creates the tree retargets this filter.
+            demos:
+              - '**/__demos_filter_unset__'
+            all:
+              - '.github/**'
+              - '.pre-commit-config.yaml'
+              - 'pyproject.toml'
+              - 'setup.cfg'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.prettierrc'
+              - '.prettierignore'
+              - 'Makefile'
+              - 'version/**'
+
+      # `every` is per filter: a file matches only when every pattern matches.
+      # `other` is the fail-safe catch-all (anything none of the filters claim).
+      # `all_scripts` is `scripts/**` except the two docs scripts.
+      # `meta_txt` is root `*.txt` except requirements files (those are backend).
+      - name: Filter catch-all and exclusions
+        id: narrow
+        if: steps.filter.outcome == 'success'
+        continue-on-error: true
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad
+        with:
+          predicate-quantifier: every
+          base: ${{ github.event_name == 'push' && github.event.before || '' }}
+          filters: |
+            all_scripts:
+              - 'scripts/**'
+              - '!scripts/prepare_docs_build.py'
+              - '!scripts/check_doc_scenarios.py'
+            meta_txt:
+              - '*.txt'
+              - '!requirements*.txt'
+            other:
+              - '**'
+              - '!cms/**'
+              - '!files/**'
+              - '!users/**'
+              - '!actions/**'
+              - '!admin_customizations/**'
+              - '!identity_providers/**'
+              - '!rbac/**'
+              - '!saml_auth/**'
+              - '!uploader/**'
+              - '!migrationservice/**'
+              - '!lti/**'
+              - '!lms-plugins/**'
+              - '!cli-tool/**'
+              - '!templates/**'
+              - '!static/**'
+              - '!fixtures/**'
+              - '!tests/**'
+              - '!manage.py'
+              - '!conftest.py'
+              - '!pytest.ini'
+              - '!.coveragerc'
+              - '!requirements*.txt'
+              - '!Dockerfile'
+              - '!.dockerignore'
+              - '!docker-compose*.yaml'
+              - '!docker-compose/**'
+              - '!deploy/**'
+              - '!frontend/**'
+              - '!frontend-tools/**'
+              - '!docs/**'
+              - '!mkdocs.yml'
+              - '!requirements-docs.txt'
+              - '!scripts/prepare_docs_build.py'
+              - '!scripts/check_doc_scenarios.py'
+              - '!.agent/**'
+              - '!AGENTS.md'
+              - '!CLAUDE.md'
+              - '!skills/**'
+              - '!.agents/**'
+              - '!.claude/**'
+              - '!.cursor/**'
+              - '!*.md'
+              - '!*.txt'
+              - '!.github/**'
+              - '!.pre-commit-config.yaml'
+              - '!pyproject.toml'
+              - '!setup.cfg'
+              - '!package.json'
+              - '!package-lock.json'
+              - '!.prettierrc'
+              - '!.prettierignore'
+              - '!Makefile'
+              - '!version/**'
+              - '!scripts/**'
+
+      - name: Decide which jobs are needed
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
+          RUN_FILTER: ${{ steps.mode.outputs.run_filter }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          FILTER_OUTCOME: ${{ steps.filter.outcome }}
+          NARROW_OUTCOME: ${{ steps.narrow.outcome }}
+          IN_BACKEND: ${{ steps.filter.outputs.backend }}
+          IN_DOCKER: ${{ steps.filter.outputs.docker }}
+          IN_FRONTEND: ${{ steps.filter.outputs.frontend }}
+          IN_DOCS: ${{ steps.filter.outputs.docs }}
+          IN_META: ${{ steps.filter.outputs.meta }}
+          IN_DEMOS: ${{ steps.filter.outputs.demos }}
+          IN_ALL: ${{ steps.filter.outputs.all }}
+          IN_META_TXT: ${{ steps.narrow.outputs.meta_txt }}
+          IN_ALL_SCRIPTS: ${{ steps.narrow.outputs.all_scripts }}
+          IN_OTHER: ${{ steps.narrow.outputs.other }}
+        run: |
+          set -euo pipefail
+
+          write_out() {
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
+
+          norm() {
+            if [[ "${1:-}" == "true" ]]; then
+              printf 'true'
+            else
+              printf 'false'
+            fi
+          }
+
+          force_reason=""
+          if [[ "$EVENT_NAME" == "push" && "$REF" == "refs/heads/main" ]]; then
+            force_reason="push to main"
+          elif [[ "$EVENT_NAME" == "push" && -n "$BEFORE" && -z "${BEFORE//0/}" ]]; then
+            force_reason="new branch (before is all zeros)"
+          elif [[ "$CHECKOUT_OUTCOME" == "failure" || "$CHECKOUT_OUTCOME" == "cancelled" ]]; then
+            force_reason="checkout ${CHECKOUT_OUTCOME}"
+          elif [[ "$RUN_FILTER" == "true" && "$FILTER_OUTCOME" != "success" ]]; then
+            force_reason="path filter ${FILTER_OUTCOME}"
+          elif [[ "$RUN_FILTER" == "true" && "$NARROW_OUTCOME" != "success" ]]; then
+            force_reason="catch-all filter ${NARROW_OUTCOME}"
+          fi
+
+          if [[ -n "$force_reason" ]]; then
+            backend=false
+            docker=false
+            frontend=false
+            docs=false
+            meta=false
+            demos=false
+            all=false
+            other=false
+            test_needed=true
+            frontend_needed=true
+            full_suite=true
+          else
+            backend="$(norm "$IN_BACKEND")"
+            docker="$(norm "$IN_DOCKER")"
+            frontend="$(norm "$IN_FRONTEND")"
+            docs="$(norm "$IN_DOCS")"
+            meta="$(norm "$IN_META")"
+            demos="$(norm "$IN_DEMOS")"
+            all="$(norm "$IN_ALL")"
+            other="$(norm "$IN_OTHER")"
+            if [[ "$(norm "$IN_META_TXT")" == "true" ]]; then
+              meta=true
+            fi
+            if [[ "$(norm "$IN_ALL_SCRIPTS")" == "true" ]]; then
+              all=true
+            fi
+            test_needed=false
+            if [[ "$backend" == "true" || "$docker" == "true" || "$all" == "true" || "$other" == "true" ]]; then
+              test_needed=true
+            fi
+            frontend_needed=false
+            if [[ "$frontend" == "true" || "$all" == "true" || "$other" == "true" ]]; then
+              frontend_needed=true
+            fi
+            full_suite=false
+            if [[ "$test_needed" == "true" && "$frontend_needed" == "true" ]]; then
+              full_suite=true
+            fi
+          fi
+
+          write_out backend "$backend"
+          write_out docker "$docker"
+          write_out frontend "$frontend"
+          write_out docs "$docs"
+          write_out meta "$meta"
+          write_out demos "$demos"
+          write_out all "$all"
+          write_out other "$other"
+          write_out test_needed "$test_needed"
+          write_out frontend_needed "$frontend_needed"
+          write_out full_suite "$full_suite"
+
+          detail="backend=${backend} docker=${docker} frontend=${frontend} docs=${docs} meta=${meta} demos=${demos} all=${all} other=${other}"
+          if [[ -n "$force_reason" ]]; then
+            echo "Full suite forced: ${force_reason}. ${detail}"
+            echo "::notice title=CI path filters::full suite forced (${force_reason})"
+          else
+            echo "Classified diff. test_needed=${test_needed} frontend_needed=${frontend_needed} full_suite=${full_suite}. ${detail}"
+            echo "::notice title=CI path filters::test_needed=${test_needed} frontend_needed=${frontend_needed} full_suite=${full_suite}"
+          fi
+          {
+            echo "### Path filter decision"
+            if [[ -n "$force_reason" ]]; then
+              echo "Forced full suite: ${force_reason}"
+            else
+              echo "Classified the diff."
+            fi
+            echo
+            echo "| output | value |"
+            echo "| --- | --- |"
+            echo "| test_needed | ${test_needed} |"
+            echo "| frontend_needed | ${frontend_needed} |"
+            echo "| full_suite | ${full_suite} |"
+            echo "| backend | ${backend} |"
+            echo "| docker | ${docker} |"
+            echo "| frontend | ${frontend} |"
+            echo "| docs | ${docs} |"
+            echo "| meta | ${meta} |"
+            echo "| demos | ${demos} |"
+            echo "| all | ${all} |"
+            echo "| other | ${other} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   pre-commit:
     uses: ./.github/workflows/pre-commit.yml
+
   test:
+    needs: [changes, pre-commit]
+    if: ${{ needs.changes.outputs.test_needed == 'true' }}
     uses: ./.github/workflows/python.yml
-    needs: [pre-commit]
+
   frontend:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.frontend_needed == 'true' }}
     uses: ./.github/workflows/frontend-build-and-test.yml
+
+  ci-gate:
+    if: always()
+    needs: [changes, pre-commit, test, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pass only when every needed job succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          TEST_NEEDED: ${{ needs.changes.outputs.test_needed }}
+          FRONTEND_NEEDED: ${{ needs.changes.outputs.frontend_needed }}
+        run: |
+          set -euo pipefail
+
+          result_of() {
+            jq -r --arg job "$1" '.[$job].result // "missing"' <<<"$NEEDS_JSON"
+          }
+
+          fail() {
+            echo "::error::$*"
+            exit 1
+          }
+
+          changes_result="$(result_of changes)"
+          precommit_result="$(result_of pre-commit)"
+          test_result="$(result_of test)"
+          frontend_result="$(result_of frontend)"
+
+          if [[ "$changes_result" != "success" ]]; then
+            fail "changes result is ${changes_result}; expected success"
+          fi
+          if [[ "$precommit_result" != "success" ]]; then
+            fail "pre-commit result is ${precommit_result}; expected success"
+          fi
+
+          # A skip is a pass only when the filter said the job was not needed.
+          # Any other flag (true, empty, unexpected) requires success, so a
+          # broken if: cannot turn a skipped test into a green gate.
+          # failure and cancelled fail in both cases.
+          check_job() {
+            local name="$1" result="$2" needed="$3"
+            if [[ "$needed" == "false" ]]; then
+              if [[ "$result" != "skipped" && "$result" != "success" ]]; then
+                fail "${name} was not needed but result is ${result}; expected skipped or success"
+              fi
+              echo "${name}: not needed, result ${result}"
+              return 0
+            fi
+            if [[ "$result" != "success" ]]; then
+              fail "${name} was needed (flag '${needed}') but result is ${result}; expected success"
+            fi
+            echo "${name}: needed, result success"
+          }
+
+          check_job test "$test_result" "$TEST_NEEDED"
+          check_job frontend "$frontend_result" "$FRONTEND_NEEDED"
+          echo "ci-gate passed"
+          {
+            echo "### CI gate"
+            echo "Passed. changes=${changes_result} pre-commit=${precommit_result} test=${test_result} (needed=${TEST_NEEDED}) frontend=${frontend_result} (needed=${FRONTEND_NEEDED})"
+          } >> "$GITHUB_STEP_SUMMARY"

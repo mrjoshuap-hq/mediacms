@@ -41,14 +41,14 @@ env:
 jobs:
   context:
     name: Resolve channel
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       channel: ${{ steps.resolve.outputs.channel }}
       proceed: ${{ steps.resolve.outputs.proceed }}
       tag_name: ${{ steps.resolve.outputs.tag_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -113,7 +113,7 @@ jobs:
     name: Compute version
     needs: [context, test, frontend]
     if: needs.context.outputs.proceed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       tag: ${{ steps.ver.outputs.tag }}
       version: ${{ steps.ver.outputs.version }}
@@ -121,12 +121,12 @@ jobs:
       is_emergency: ${{ steps.ver.outputs.is_emergency }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
 
@@ -155,15 +155,15 @@ jobs:
     name: Pack release assets
     needs: [context, version, images]
     if: needs.context.outputs.proceed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
 
@@ -181,7 +181,7 @@ jobs:
           scripts/pack_release_assets.sh "${{ needs.version.outputs.tag }}" "${{ needs.version.outputs.channel }}"
 
       - name: Upload asset artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets-${{ needs.version.outputs.tag }}
           path: dist/release/
@@ -191,16 +191,16 @@ jobs:
     name: GitHub Release
     needs: [context, version, assets]
     if: needs.context.outputs.proceed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-assets-${{ needs.version.outputs.tag }}
           path: dist/release
@@ -220,7 +220,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           name: ${{ needs.version.outputs.tag }} (${{ needs.version.outputs.channel }})

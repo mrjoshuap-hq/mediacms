@@ -24,9 +24,12 @@ permissions:
   pages: write
   id-token: write
 
+# PR builds and the Pages deploy must not share a group. A pull request
+# cancels only its own superseded builds. Pushes, tags, and workflow_dispatch
+# stay on one deploy group and are never cancelled.
 concurrency:
-  group: docs-pages
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   STABLE_BRANCH: ${{ vars.MEDIACMS_STABLE_BRANCH || 'main' }}

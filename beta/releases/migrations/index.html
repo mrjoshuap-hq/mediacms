@@ -504,6 +504,8 @@
       
         
       
+        
+      
     
     
     
@@ -550,6 +552,29 @@
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../v10.0.0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    v10.0.0 release notes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -3487,8 +3512,8 @@
 </tr>
 <tr>
 <td><code>actions</code></td>
-<td><code>0005</code> … <code>0007</code></td>
-<td>MediaAction indexes and action choices (integrity, <code>fs_imported</code>, <code>fs_original_gone</code>, <code>fs_pruned</code>, <code>path_migrated</code>)</td>
+<td><code>0004</code> … <code>0007</code></td>
+<td>MediaAction options, indexes, and action choices (integrity, <code>fs_imported</code>, <code>fs_original_gone</code>, <code>fs_pruned</code>, <code>path_migrated</code>)</td>
 <td>Partial</td>
 <td>Yes</td>
 </tr>
@@ -3499,10 +3524,17 @@
 <td>No</td>
 <td>Yes</td>
 </tr>
+<tr>
+<td><code>users</code></td>
+<td><code>0003_remove_user_media_count</code></td>
+<td>Removes the <code>User.media_count</code> column. Counts come from listable media at query time. A backward migrate does not restore the old values</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
 </tbody>
 </table>
 <p>Exact names can grow. After you pull an image, list pending migrations:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>manage.py<span class="w"> </span>showmigrations<span class="w"> </span>files<span class="w"> </span>actions<span class="w"> </span>migrationservice
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>manage.py<span class="w"> </span>showmigrations<span class="w"> </span>files<span class="w"> </span>actions<span class="w"> </span>migrationservice<span class="w"> </span>users
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>python<span class="w"> </span>manage.py<span class="w"> </span>migrate<span class="w"> </span>--plan
 </code></pre></div>
 <p>In Docker Compose (production-style layout):</p>
@@ -3551,6 +3583,12 @@
 <td>Partial</td>
 <td>Yes</td>
 <td>Processing list performance</td>
+</tr>
+<tr>
+<td><code>User.media_count</code></td>
+<td>Yes</td>
+<td>No</td>
+<td>Custom code or reports that read this field must count listable media instead</td>
 </tr>
 </tbody>
 </table>

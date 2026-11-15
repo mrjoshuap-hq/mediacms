@@ -391,6 +391,12 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/upgrade-tips/"/>
     </url>
     <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/releases/v10.0.0/</loc>
+        <lastmod>2026-11-15</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/releases/v10.0.0/"/>
+    </url>
+    <url>
         <loc>https://mrjoshuap.github.io/mediacms/latest/roles/</loc>
         <lastmod>2026-11-15</lastmod>
         <changefreq>daily</changefreq>

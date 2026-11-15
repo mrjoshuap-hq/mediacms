@@ -1,4 +1,5 @@
-<!-- curated fork release notes; edit this file, not docs/en/reference/whats-new.md -->
+<!-- curated fork release notes; edit this file, not docs/en/reference/whats-new.md.
+     scripts/prepare_docs_build.py appends the AI disclosure footer on the published page. -->
 # Fork changes since upstream MediaCMS 9.4.0
 
 These notes cover the fork beta line (`mediacms-next`) relative to upstream `main` at MediaCMS 9.4.0. Entries use the same Conventional Commits types as `.releaserc.json`: **Features**, **Bug Fixes**, **Documentation**, **Refactors**.

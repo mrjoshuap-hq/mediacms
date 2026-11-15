@@ -21,7 +21,7 @@ Skip non-MediaCMS plans (other products, homelab, unrelated repos).
 | Path | Role |
 | ---- | ---- |
 | `~/.cursor/plans/*.plan.md` | Live Cursor plans (source) |
-| `.agent/plan-history/*.plan.md` | Project archive (copies) |
+| `.agent/plan-history/*.md` | Project archive (every plan note except `INDEX.md`) |
 | `.agent/plan-history/INDEX.md` | Human catalog |
 | `.agent/plan-history/manifest.json` | Machine-readable metadata |
 
@@ -36,6 +36,8 @@ Preserve the original filename (e.g. `rbac_permissions_audit_ef026657.plan.md`).
 ```bash
 python3 skills/plan-history/scripts/refresh_index.py
 ```
+
+The script indexes every `*.md` file in `.agent/plan-history/` except `INDEX.md`. `date` comes from frontmatter (`date` or `created`), a `- Date: YYYY-MM-DD` line, the date already stored in `manifest.json`, or the first git commit that added the file. `updated` is the author date of the latest commit that touched the file. On a clean checkout, including a shallow one, a second run leaves `INDEX.md` and `manifest.json` unchanged. A shallow clone prints a warning and keeps recorded `updated` values, because a depth-1 history would stamp every file with the tip commit.
 
 4. Briefly confirm archival in the reply (filename + that INDEX was refreshed). Do not commit unless the user asks.
 

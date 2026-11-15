@@ -12,7 +12,7 @@ Upstream MediaCMS demo (v9): https://demo.mediacms.io
 
 ## Attribution
 
-This fork is built on [MediaCMS](https://github.com/mediacms-io/mediacms) by the [mediacms-io](https://github.com/mediacms-io) team. The license is the [GNU Affero General Public License v3.0](LICENSE.txt).
+This fork is based on upstream [MediaCMS](https://github.com/mediacms-io/mediacms), which is developed by the [mediacms-io](https://github.com/mediacms-io) team. The license is the [GNU Affero General Public License v3.0](LICENSE.txt).
 
 Copyright Markos Gogoulos.
 
@@ -24,7 +24,7 @@ The MediaCMS name is the upstream project's mark.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE.txt)
 
-| | v10 (this fork) | v9 (upstream) |
+| | v10 (this fork, beta) | v9 (upstream) |
 | --- | --- | --- |
 | Release | [![v10 release](https://img.shields.io/github/v/release/mrjoshuap/mediacms?include_prereleases)](https://github.com/mrjoshuap/mediacms/releases) | [![v9 release](https://img.shields.io/github/v/release/mediacms-io/mediacms?color=green)](https://github.com/mediacms-io/mediacms/releases/) |
 | CI | [![v10 CI](https://img.shields.io/github/actions/workflow/status/mrjoshuap/mediacms/ci.yml?branch=mediacms-next)](https://github.com/mrjoshuap/mediacms/actions/workflows/ci.yml) | |
@@ -34,7 +34,7 @@ The MediaCMS name is the upstream project's mark.
 
 ## v9 and v10
 
-| | v10 (this fork) | v9 (upstream) |
+| | v10 (this fork, beta) | v9 (upstream) |
 | --- | --- | --- |
 | Line | Beta branch [`mediacms-next`](https://github.com/mrjoshuap/mediacms/tree/mediacms-next). Stable branch [`main`](https://github.com/mrjoshuap/mediacms/tree/main). No stable release yet. | [`main`](https://github.com/mediacms-io/mediacms/tree/main) on [mediacms-io/mediacms](https://github.com/mediacms-io/mediacms). Release v9.4.0. |
 | Releases | Beta pre-releases only. Tag pattern `v10.0.0.YYYYMMDD[.N]` (moving to `-beta.N` per [#90](https://github.com/mrjoshuap/mediacms/issues/90)). [Releases](https://github.com/mrjoshuap/mediacms/releases). | Current release [v9.4.0](https://github.com/mediacms-io/mediacms/releases/tag/v9.4.0). |
@@ -88,7 +88,7 @@ The MediaCMS name is the upstream project's mark.
 
 ## Philosophy
 
-MediaCMS is an open source web application for community portals and collaboration. The project goals are to provide the functions of a video and media CMS, to support installation and maintenance, and to allow customization and added features.
+This software is an open source web application for community portals and collaboration. Goals for this fork are to provide the functions of a video and media CMS, to support installation and maintenance, and to allow customization and added features.
 
 ## License
 

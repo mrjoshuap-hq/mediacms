@@ -22,18 +22,18 @@ Upstream work uses a different base:
 
 When upstream `main` moves, one `upstream: sync` issue covers that event: merge upstream `main` into `mediacms-next` through a pull request, then rebase or merge open upstream PR branches. Fork `main` picks the result up on the next promotion. Merges into `mediacms-next` follow skill `merge-hygiene`.
 
-Title fork pull requests with a Conventional Commit type (`AGENTS.md`). Include `Closes #N` when the PR closes an issue. Run `pre-commit` and `TESTING=True` pytest for product changes. Do not commit `deploy/docker/local_settings.py`. Do not force-push a shared branch unless Joshua explicitly requests it.
+Title fork pull requests with a Conventional Commit type (`AGENTS.md`). Include `Closes #N` when the PR closes an issue. Run `pre-commit` and `TESTING=True` pytest for product changes. Do not commit `deploy/docker/local_settings.py`. Bots force-push only their own pull request branches. Never force-push a shared branch (`main`, `mediacms-next`, or anyone else's branch).
 
 ## Upstream pull requests
 
-The upstream template sections live in `.github/pull_request_template.md` (mediacms-io/mediacms#1640). Roadmap issue #1 keeps that file free of fork-only wording, so the footer stays in this skill. Do not edit the template to embed it. On this branch the file is one trailing blank line short of upstream `main`; leave that for a sync, and do not treat a blank-line fix as permission to add fork text.
+The upstream template sections live in `.github/pull_request_template.md` (mediacms-io/mediacms#1640). Joshua decided on Nov 14, 2026 that the fork copy keeps those sections and checkboxes and adds one footer section after them. That section tells AI agents to end the pull request description with the footer below. This footer section is the only intentional divergence from upstream. When you sync the file from upstream, keep the footer section and leave the upstream sections and checkboxes unchanged.
 
 When an agent fills a pull request description:
 
 - Leave every checkbox under **AI assistance disclosure** and **Attestation** unticked. Joshua fills those. Agents never tick them.
 - You may fill the `Tool(s) and what they did` line with what the tools actually did.
 - End the description with the AI disclosure footer below.
-- The same rule applies to an upstream PR: Joshua still ticks disclosure and attestation. An agent does not post the PR, or a comment, on `mediacms-io/mediacms`.
+- The same rule applies to an upstream PR: use the upstream template there, Joshua still ticks disclosure and attestation, and the description still ends with the footer. An agent does not post the PR, or a comment, on `mediacms-io/mediacms`.
 
 Issue templates under `.github/ISSUE_TEMPLATE/` have a separate human **AI disclosure** checkbox (the reporter confirms the facts). Leave that checkbox unticked as well.
 
@@ -51,18 +51,20 @@ An upstream draft that Joshua has actually reviewed uses this footer instead:
 
 Do not add "Reviewed by" unless Joshua reviewed that draft. Replace `<agent name>` with the agent's name, for example `Grok Bot`.
 
-Agent-authored commits add an `Assisted-by:` trailer as the last line of the commit message, for example `Assisted-by: Cursor agent (Grok Bot Docs/DevRel)`. The trailer names the agent that wrote the change.
+Agent commits carry `Assisted-by: Grok Bot (<role>)` only. `<role>` is the bot's role, for example `Docs/DevRel`. A platform hook may also append `Co-authored-by`. Agents never add `Signed-off-by` and never sign off as Joshua. The squash-merge commit is the only commit that gets `Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`. The merger adds that line in the squash-merge message at merge time.
 
-Release notes an agent writes (a release issue, a release-note comment, or a hand-written GitHub Release body) get the footer. Do not put the footer in `docs/_shared/fork-whats-new.md`, generated what's-new pages, `CHANGELOG.md`, or the `INSTALL-*.md` asset `release.yml` publishes. Those are reader-facing docs. `AGENTS.md` already forbids hand-editing `CHANGELOG.md`.
+Release notes an agent writes (a release issue, a release-note comment, or a hand-written GitHub Release body) get the footer. The published What's new page ends with the same footer: `scripts/prepare_docs_build.py` appends it when it generates `docs/en/reference/whats-new.md` for a fork channel. Leave the footer out of the notes body in `docs/_shared/fork-whats-new.md`, `CHANGELOG.md`, and the `INSTALL-*.md` asset `release.yml` publishes. `AGENTS.md` already forbids hand-editing `CHANGELOG.md`. Do not hand-edit the generated what's-new page.
 
 ## Commits, signing, and authorship
 
 - Follow Conventional Commits from `AGENTS.md`. Do not bump `package.json` or hand-edit `CHANGELOG.md`.
-- Agent-authored commits use the agent's own git identity. Do not set the author or committer to Josh Preston or `mrjoshuap@users.noreply.github.com`.
+- Agent commits carry `Assisted-by: Grok Bot (<role>)` only. `<role>` is the bot's role, for example `Docs/DevRel`. Agents never add `Signed-off-by` and never sign off as Joshua.
+- The squash-merge commit is the only commit that gets `Signed-off-by: mrjoshuap <5722442+mrjoshuap@users.noreply.github.com>`. The merger adds that line in the squash-merge message at merge time. Author and committer on an agent commit stay the agent's git identity.
+- Agent-authored commits use the agent's own git identity for author and committer. Do not set the author or committer to Josh Preston or `mrjoshuap@users.noreply.github.com`.
 - A platform hook may append `Co-authored-by: Josh Preston <mrjoshuap@users.noreply.github.com>`. Leave that trailer in place. Do not add it yourself, and do not treat it as Joshua's signature or as a claim that he wrote the diff.
-- Do not claim a commit is signed. Do not forge a signature and do not use Joshua's key. If signing is required and the agent cannot sign, stop and ask Joshua.
-- Do not rewrite published history so that an agent commit looks like Joshua's. Decision D4 keeps Joshua's `AGENTS.md` history intact; the same restraint applies to the rest of the branch.
-- Do not present an address, including the noreply GitHub address, as a mailbox someone can reach.
+- Do not forge a cryptographic signature and do not use Joshua's key. If a cryptographic signature is required and the agent cannot sign, stop and ask Joshua.
+- Do not rewrite published history so that an agent commit's author looks like Joshua. Decision D4 keeps Joshua's `AGENTS.md` history intact; the same restraint applies to the rest of the branch.
+- Do not present an address, including the noreply GitHub address, as a mailbox someone can reach. The squash-merge sign-off identity above is the trailer Joshua specified for the merge commit. It is not a contact address.
 
 ## Ask Joshua
 
@@ -72,7 +74,7 @@ Stop and ask Joshua before doing any of the following. On an issue, add `triage:
 - Adding `agent: ok` outside decision D7. D7 allows that label only for `type: docs`, `area: demos`, and `area: test-ci`. If Joshua has already applied `agent: ok`, that issue may be implemented.
 - Ticking an AI disclosure or Attestation checkbox.
 - Opening a pull request or posting a comment on `mediacms-io/mediacms`. Draft the text on the fork and let Joshua post it.
-- Force-pushing a shared branch, deleting a branch, or merging a pull request.
+- Deleting a branch, or merging a pull request. A bot force-pushes only its own pull request branch, and never force-pushes `main`, `mediacms-next`, or anyone else's branch.
 - Changing `USERS_NEEDS_TO_BE_APPROVED` or any other setting on a shared instance (D8).
 - Splitting an upstream pull request, or retiring the default `bug`, `enhancement`, or `documentation` labels.
 - A data-changing demo recording.
@@ -135,7 +137,7 @@ Milestones in use: `M0 Orchestration bootstrap`, `M1 Agent guidance aligned`, `M
 ## Additional resources
 
 - `AGENTS.md` (precedence, hard rules, change impact)
-- `.github/pull_request_template.md` (upstream disclosure and attestation; Joshua ticks the boxes)
+- `.github/pull_request_template.md` (upstream sections plus the one fork AI disclosure footer; Joshua ticks the boxes)
 - `.github/ISSUE_TEMPLATE/` (human disclosure checkbox; agents leave it unticked and add the footer)
 - Skill `issue-triage`, skill `merge-hygiene`, skill `fork-docs-release`
 - Issues #1 (precedence, D1–D8), #3 (labels), #5 (Project), #7 (this skill), #8 (github-orchestration, not created here)

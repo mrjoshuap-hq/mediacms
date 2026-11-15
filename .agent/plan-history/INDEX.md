@@ -3,7 +3,7 @@
 Archive of Cursor plans for this MediaCMS fork.
 Live plans remain in `~/.cursor/plans/`; this folder is the project snapshot.
 
-**Refreshed:** 2026-11-14 19:37
+**Refreshed:** 2026-11-14 19:41
 **Count:** 53 plans
 
 See `manifest.json` for machine-readable metadata. Archival workflow: `skills/plan-history/SKILL.md`.

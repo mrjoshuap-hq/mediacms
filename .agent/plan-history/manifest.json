@@ -2,7 +2,7 @@
   {
     "file": "release_v10.0.0_promotion.plan.md",
     "date": "2026-11-14",
-    "mtime_iso": "2026-11-14T19:37:54",
+    "mtime_iso": "2026-11-14T19:41:10",
     "name": "Release v10.0.0 promotion",
     "overview": "Promote mediacms-next to main for the first fork stable release v10.0.0.YYYYMMDD: draft cited release notes, open the promotion PR, and hand merge, tag date, and tag to Joshua.",
     "todos": {

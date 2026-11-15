@@ -1,0 +1,110 @@
+# Dependabot: weekly grouped version updates on mediacms-next (primary).
+# main (default branch) gets security updates only (open-pull-requests-limit: 0;
+# security updates always target the default branch and ignore target-branch).
+version: 2
+updates:
+  # ---------- mediacms-next: version updates ----------
+  - package-ecosystem: pip
+    directories: ["/", "/cli-tool"]
+    target-branch: mediacms-next
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/New_York }
+    open-pull-requests-limit: 3
+    rebase-strategy: disabled
+    labels: ["dependencies", "python"]
+    commit-message: { prefix: build, include: scope }
+    groups:
+      pip-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - "/frontend"
+      - "/frontend-tools/chapters-editor"
+      - "/frontend-tools/video-editor"
+      - "/frontend-tools/video-js"
+      - "/lms-plugins/mediacms-moodle"
+    target-branch: mediacms-next
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/New_York }
+    open-pull-requests-limit: 3
+    rebase-strategy: disabled
+    labels: ["dependencies", "javascript"]
+    commit-message: { prefix: build, include: scope }
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories: ["/"]
+    target-branch: mediacms-next
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/New_York }
+    open-pull-requests-limit: 1
+    rebase-strategy: disabled
+    labels: ["dependencies", "docker"]
+    commit-message: { prefix: build, include: scope }
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directories: ["/"]
+    target-branch: mediacms-next
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/New_York }
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
+    labels: ["dependencies", "github_actions", "area: test-ci"]
+    commit-message: { prefix: ci, include: scope }
+    groups:
+      actions-all:
+        patterns: ["*"]
+
+  # ---------- main (default): security updates only ----------
+  - package-ecosystem: pip
+    directories: ["/", "/cli-tool"]
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/New_York }
+    open-pull-requests-limit: 0
+    labels: ["dependencies", "python"]
+    commit-message: { prefix: build, include: scope }
+    groups:
+      pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - "/frontend"
+      - "/frontend-tools/chapters-editor"
+      - "/frontend-tools/video-editor"
+      - "/frontend-tools/video-js"
+      - "/lms-plugins/mediacms-moodle"
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/New_York }
+    open-pull-requests-limit: 0
+    labels: ["dependencies", "javascript"]
+    commit-message: { prefix: build, include: scope }
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories: ["/"]
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/New_York }
+    open-pull-requests-limit: 0
+    labels: ["dependencies", "docker"]
+    commit-message: { prefix: build, include: scope }
+    groups:
+      docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directories: ["/"]
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: America/New_York }
+    open-pull-requests-limit: 0
+    labels: ["dependencies", "github_actions", "area: test-ci"]
+    commit-message: { prefix: ci, include: scope }
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]

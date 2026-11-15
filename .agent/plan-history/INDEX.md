@@ -3,13 +3,14 @@
 Archive of Cursor plans for this MediaCMS fork.
 Live plans remain in `~/.cursor/plans/`; this folder is the project snapshot.
 
-**Refreshed:** 2026-11-14 18:06
-**Count:** 52 plans
+**Refreshed:** 2026-11-14 19:41
+**Count:** 53 plans
 
 See `manifest.json` for machine-readable metadata. Archival workflow: `skills/plan-history/SKILL.md`.
 
 | Date | Plan | Overview | Todos |
 | ---- | ---- | -------- | ----- |
+| 2026-11-14 | [Release v10.0.0 promotion](release_v10.0.0_promotion.plan.md) | Promote mediacms-next to main for the first fork stable release v10.0.0.YYYYMMDD: draft cited release notes, open the... | completed: 5, pending: 4 |
 | 2026-11-14 | [MediaCMS Agent Skills](mediacms_agent_skills_e487853e.plan.md) | Slim always-on AGENTS.md + thin CLAUDE.md, add a shared `skills/` tree (symlinked for Cursor/Claude/Codex), and ship ... | completed: 4 |
 | 2026-11-14 | [Filesystem media import](filesystem_media_import_83291475.plan.md) | Standardize sharded uid media paths, filesystem library sync under /external-media_files, and a gated single/bulk pat... | completed: 5, pending: 6 |
 | 2026-11-14 | [RBAC permissions audit](rbac_permissions_audit_ef026657.plan.md) | Full audit of MediaCMS global roles, settings gates, MediaPermission sharing, and USE_RBAC category roles against the... | completed: 9 |

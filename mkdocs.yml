@@ -97,6 +97,7 @@ nav:
     - Home: index.md
     - Releases:
           - releases/index.md
+          - v10.0.0 release notes: releases/v10.0.0.md
           - Compare lines: releases/compare.md
           - Features: releases/features.md
           - Fixes and known issues: releases/fixes.md

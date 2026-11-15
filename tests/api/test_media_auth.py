@@ -464,16 +464,27 @@ class ShardedMediaAuthTest(TestCase):
         self.assertEqual(self._auth(uri).status_code, 403)
         self.assertEqual(self._auth(uri, self._login(self.owner)).status_code, 204)
 
+    @staticmethod
+    def _other_shard(shard):
+        """A two-hex shard guaranteed to differ from `shard`"""
+        return f"{(int(shard, 16) + 1) % 256:02x}"
+
     def test_shards_that_do_not_match_the_uid_are_denied(self):
         uid = self.public_media.uid.hex
-        wrong = "00" if uid[0:2] != "00" else "11"
-        for uri in [
-            f"/media/original/{wrong}/{uid[2:4]}/{uid}/source.png",
-            f"/media/original/{uid[0:2]}/{wrong}/{uid}/source.png",
-            f"/media/hls/{wrong}/{wrong}/{uid}/master.m3u8",
-            f"/media/thumbnails/{wrong}/{uid[2:4]}/{uid}/poster.jpg",
-            f"/media/subtitles/{uid[2:4]}/{uid[0:2]}/{uid}/en.vtt",
-        ]:
+        aa, bb = uid[0:2], uid[2:4]
+        wrong_aa, wrong_bb = self._other_shard(aa), self._other_shard(bb)
+        # swapped slots are only a mismatch when the two slots differ
+        swapped = f"{bb}/{aa}" if aa != bb else f"{wrong_aa}/{bb}"
+        uris = [
+            f"/media/original/{wrong_aa}/{bb}/{uid}/source.png",
+            f"/media/original/{aa}/{wrong_bb}/{uid}/source.png",
+            f"/media/hls/{wrong_aa}/{wrong_bb}/{uid}/master.m3u8",
+            f"/media/thumbnails/{wrong_aa}/{bb}/{uid}/poster.jpg",
+            f"/media/subtitles/{swapped}/{uid}/en.vtt",
+        ]
+        real = f"{aa}/{bb}/{uid}/"
+        for uri in uris:
+            self.assertNotIn(real, uri, "test bug: URI uses the real shard path")
             self.assertEqual(self._auth(uri).status_code, 403, uri)
 
     def test_a_sharded_path_cannot_borrow_a_uid_from_another_segment(self):

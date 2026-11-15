@@ -107,6 +107,10 @@ jobs:
               - 'pytest.ini'
               - '.coveragerc'
               - 'requirements*.txt'
+              # pytest loads the generator and asserts on the fork what's-new
+              # page. Keep both paths in `docs` as well (docs/** and the script).
+              - 'scripts/prepare_docs_build.py'
+              - 'docs/_shared/fork-whats-new.md'
             docker:
               - 'Dockerfile'
               - '.dockerignore'
@@ -311,6 +315,14 @@ jobs:
             full_suite=false
             if [[ "$test_needed" == "true" && "$frontend_needed" == "true" ]]; then
               full_suite=true
+            fi
+            # An empty change list leaves every flag false. Run the suite
+            # rather than treating that as "nothing needed".
+            if [[ "$backend" == "false" && "$docker" == "false" && "$frontend" == "false" && "$docs" == "false" && "$meta" == "false" && "$demos" == "false" && "$all" == "false" && "$other" == "false" ]]; then
+              test_needed=true
+              frontend_needed=true
+              full_suite=true
+              force_reason="filter matched nothing"
             fi
           fi
 

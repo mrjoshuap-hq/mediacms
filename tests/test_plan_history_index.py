@@ -111,6 +111,30 @@ def test_reused_filename_uses_the_new_add_date():
         shutil.rmtree(work, ignore_errors=True)
 
 
+def test_rename_then_reusing_the_old_name_keeps_both_lifetimes():
+    """The renamed note keeps 2024; a new note at the old name is dated 2026."""
+    work = Path(tempfile.mkdtemp(prefix="ph-rename-reuse-"))
+    try:
+        _init(work)
+        archive = work / ".agent" / "plan-history"
+        archive.mkdir(parents=True)
+        (archive / "INDEX.md").write_text("# x\n", encoding="utf-8")
+        (archive / "old.md").write_text("# Renamed note\n\noriginal\n", encoding="utf-8")
+        _commit(work, "add", "2024-04-04T12:00:00-05:00")
+        _git(work, "mv", ".agent/plan-history/old.md", ".agent/plan-history/new.md")
+        _commit(work, "rename", "2025-05-05T12:00:00-05:00")
+        (archive / "old.md").write_text("# Replacement note\n\nadded in 2026\n", encoding="utf-8")
+        _commit(work, "reuse old name", "2026-06-06T12:00:00-05:00")
+        ri.main(["--archive", str(archive)])
+        rows = _rows(archive)
+        assert rows["new.md"]["date"] == "2024-04-04"
+        assert rows["new.md"]["name"] == "Renamed note"
+        assert rows["old.md"]["date"] == "2026-06-06"
+        assert rows["old.md"]["name"] == "Replacement note"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def test_rename_keeps_the_original_add_date():
     work = Path(tempfile.mkdtemp(prefix="ph-rename-"))
     try:
@@ -133,5 +157,6 @@ def test_rename_keeps_the_original_add_date():
 if __name__ == "__main__":
     test_shallow_clone_does_not_store_boundary_updated()
     test_reused_filename_uses_the_new_add_date()
+    test_rename_then_reusing_the_old_name_keeps_both_lifetimes()
     test_rename_keeps_the_original_add_date()
     print("ok")

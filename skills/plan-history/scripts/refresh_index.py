@@ -128,17 +128,21 @@ def parse_name_status(line: str) -> tuple[str, list[str]]:
     return parts[0][:1], parts[1:]
 
 
-def collect_history(archive: Path, root: Path) -> tuple[dict[str, str], dict[str, str]]:
-    """One log pass: newest author date, and the oldest add (rename-aware)."""
+def collect_history(archive: Path, root: Path, live_names: set[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """One log pass: newest author date, and each live file's own first add.
+
+    A rename stays with that file. A later note that reuses the old filename
+    starts its own lifetime at its own add.
+    """
     output = git_stdout(archive, "log", "-M", "--name-status", "--format=%aI", "--", ".")
     if output is None:
         return {}, {}
     latest: dict[str, str] = {}
-    added: dict[str, str] = {}
-    renamed_from: dict[str, str] = {}
-    # Walking newest-first, a delete ends the current file. Older adds of the
-    # same filename belong to a previous note and must not replace this date.
-    ended: set[str] = set()
+    # Walking newest-first, each live note is traced back through renames until
+    # the add that created it. A delete or an earlier file at the same path is
+    # a different note.
+    path_id = {name: name for name in live_names}
+    born: dict[str, str] = {}
     current: str | None = None
     for line in output.splitlines():
         if not line.strip():
@@ -154,33 +158,23 @@ def collect_history(archive: Path, root: Path) -> tuple[dict[str, str], dict[str
             name = entry_name(path, archive, root)
             if name:
                 names.append(name)
-        if code == "D":
-            ended.update(names)
-        elif code == "R" and len(names) == 2 and names[1] not in ended:
-            renamed_from.setdefault(names[1], names[0])
-        elif code == "A":
+        if code == "A":
             for name in names:
-                if name not in ended:
-                    added[name] = current
+                ident = path_id.get(name)
+                if ident is not None:
+                    born[ident] = current
+                    path_id.pop(name, None)
+        elif code == "D":
+            for name in names:
+                path_id.pop(name, None)
+        elif code == "R" and len(names) == 2:
+            old, new = names
+            ident = path_id.pop(new, None)
+            if ident is not None and old not in path_id:
+                path_id[old] = ident
         for name in names:
             latest.setdefault(name, current)
-    first_add: dict[str, str] = {}
-    for name in set(latest) | set(added):
-        stamp = follow_add(name, added, renamed_from)
-        if stamp:
-            first_add[name] = stamp
-    return latest, first_add
-
-
-def follow_add(name: str, added: dict[str, str], renamed_from: dict[str, str]) -> str | None:
-    seen: set[str] = set()
-    current: str | None = name
-    while current and current not in seen:
-        if current in added:
-            return added[current]
-        seen.add(current)
-        current = renamed_from.get(current)
-    return None
+    return latest, born
 
 
 def dirty_names(archive: Path, root: Path) -> set[str]:
@@ -343,7 +337,8 @@ def refresh(archive: Path) -> None:
     dirty: set[str] = set()
     if root is not None:
         shallow = is_shallow(archive)
-        latest, first_add = collect_history(archive, root)
+        live_names = {path.name for path in archive.glob("*.md") if path.name not in SKIP_NOTES}
+        latest, first_add = collect_history(archive, root, live_names)
         dirty = dirty_names(archive, root)
 
     now = datetime.now().astimezone()

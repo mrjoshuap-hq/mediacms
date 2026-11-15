@@ -57,10 +57,7 @@ on:
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+permissions: {}
 
 # PR builds and the Pages deploy must not share a group. A pull request
 # cancels only its own superseded builds. Pushes, tags, and workflow_dispatch
@@ -76,6 +73,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
       doc_version: ${{ steps.channel.outputs.doc_version }}
@@ -105,16 +104,16 @@ jobs:
       - name: Resolve docs channel
         id: channel
         run: |
-          REF="${{ github.ref }}"
+          REF="$GITHUB_REF"
           DOC_VERSION=""
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             CHANNEL=pr
           elif [[ "$REF" == refs/tags/v* ]]; then
             TAG="${REF#refs/tags/}"
-            git fetch origin "${{ env.STABLE_BRANCH }}" "${{ env.BETA_BRANCH }}" || true
+            git fetch origin "$STABLE_BRANCH" "$BETA_BRANCH" || true
             if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]{8}(\.[0-9]+)?$ ]]; then
               DOC_VERSION="${TAG#v}"
-              if git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${{ env.STABLE_BRANCH }}"; then
+              if git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${STABLE_BRANCH}"; then
                 CHANNEL=latest
               else
                 CHANNEL=beta
@@ -122,9 +121,9 @@ jobs:
             else
               CHANNEL=latest
             fi
-          elif [[ "$REF" == "refs/heads/${{ env.BETA_BRANCH }}" ]]; then
+          elif [[ "$REF" == "refs/heads/${BETA_BRANCH}" ]]; then
             CHANNEL=beta
-          elif [[ "$REF" == "refs/heads/${{ env.STABLE_BRANCH }}" ]]; then
+          elif [[ "$REF" == "refs/heads/${STABLE_BRANCH}" ]]; then
             CHANNEL=dev
           else
             CHANNEL=local
@@ -182,6 +181,10 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

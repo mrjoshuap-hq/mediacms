@@ -28,10 +28,7 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  packages: write
-  pull-requests: read
+permissions: {}
 
 env:
   STABLE_BRANCH: ${{ vars.MEDIACMS_STABLE_BRANCH || 'main' }}
@@ -42,6 +39,8 @@ jobs:
   context:
     name: Resolve channel
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
     outputs:
       channel: ${{ steps.resolve.outputs.channel }}
       proceed: ${{ steps.resolve.outputs.proceed }}
@@ -54,17 +53,21 @@ jobs:
 
       - name: Resolve
         id: resolve
+        env:
+          DISPATCH_CHANNEL: ${{ inputs.channel }}
+          DISPATCH_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           REF="${GITHUB_REF}"
-          EVENT="${{ github.event_name }}"
+          EVENT="$GITHUB_EVENT_NAME"
           PROCEED=true
           CHANNEL=""
           TAG_NAME=""
 
           if [[ "$EVENT" == "workflow_dispatch" ]]; then
-            CHANNEL="${{ inputs.channel }}"
-            TAG_NAME="${{ inputs.tag }}"
+            CHANNEL="$DISPATCH_CHANNEL"
+            if [[ "$CHANNEL" != "beta" && "$CHANNEL" != "stable" ]]; then echo "Invalid channel: $CHANNEL" >&2; exit 1; fi
+            TAG_NAME="$DISPATCH_TAG"
           elif [[ "$REF" == refs/tags/v* ]]; then
             CHANNEL=stable
             TAG_NAME="${REF#refs/tags/}"
@@ -97,16 +100,22 @@ jobs:
   pre-commit:
     needs: context
     if: needs.context.outputs.proceed == 'true'
+    permissions:
+      contents: read
     uses: ./.github/workflows/pre-commit.yml
 
   test:
     needs: [context, pre-commit]
     if: needs.context.outputs.proceed == 'true'
+    permissions:
+      contents: read
     uses: ./.github/workflows/python.yml
 
   frontend:
     needs: context
     if: needs.context.outputs.proceed == 'true'
+    permissions:
+      contents: read
     uses: ./.github/workflows/frontend-build-and-test.yml
 
   version:
@@ -114,6 +123,8 @@ jobs:
     needs: [context, test, frontend]
     if: needs.context.outputs.proceed == 'true'
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
     outputs:
       tag: ${{ steps.ver.outputs.tag }}
       version: ${{ steps.ver.outputs.version }}
@@ -132,10 +143,12 @@ jobs:
 
       - name: Compute
         id: ver
+        env:
+          CHANNEL: ${{ needs.context.outputs.channel }}
+          TAG_NAME: ${{ needs.context.outputs.tag_name }}
         run: |
-          CHANNEL="${{ needs.context.outputs.channel }}"
           if [[ "$CHANNEL" == "stable" ]]; then
-            python scripts/release_version.py --channel stable --tag "${{ needs.context.outputs.tag_name }}"
+            python scripts/release_version.py --channel stable --tag "$TAG_NAME"
           else
             python scripts/release_version.py --channel beta
           fi
@@ -143,19 +156,23 @@ jobs:
   images:
     needs: [context, version]
     if: needs.context.outputs.proceed == 'true'
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/docker-build-push.yml
     with:
       channel: ${{ needs.version.outputs.channel }}
       version_tag: ${{ needs.version.outputs.tag }}
       push: true
       ghcr_owner: ${{ vars.MEDIACMS_GHCR_OWNER }}
-    secrets: inherit
 
   assets:
     name: Pack release assets
     needs: [context, version, images]
     if: needs.context.outputs.proceed == 'true'
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -176,9 +193,10 @@ jobs:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
         run: |
           chmod +x scripts/pack_release_assets.sh
-          scripts/pack_release_assets.sh "${{ needs.version.outputs.tag }}" "${{ needs.version.outputs.channel }}"
+          scripts/pack_release_assets.sh "$RELEASE_TAG" "$DOCS_CHANNEL"
 
       - name: Upload asset artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -192,6 +210,8 @@ jobs:
     needs: [context, version, assets]
     if: needs.context.outputs.proceed == 'true'
     runs-on: ubuntu-26.04
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -56,6 +56,7 @@ make docker-up
 - **Translations:** New UI strings go in `files/frontend_translations/en.py` first, then `make languages` / `process_translations`. Admin portal strings use Django gettext. See skill `i18n`.
 - **Never commit** `deploy/docker/local_settings.py` (local overrides only).
 - **Encoding model** is named `Encoding` (not Encode). Workers must share the same filesystem.
+- **Plans:** After creating, revising, or finishing a Cursor plan for this repo, archive it under `.agent/plan-history/` (skill `plan-history`). Do not leave MediaCMS plans only in `~/.cursor/plans/`.
 
 ## Skill Index
 
@@ -72,6 +73,7 @@ Read the matching skill under `skills/<name>/SKILL.md` before deep work. Cursor 
 | `test-ci` | Pytest, Jest, CI failures, pre-commit, coverage |
 | `merge-hygiene` | Merges into `mediacms-next`, `local_settings` stash |
 | `issue-triage` | Issue applicability, minimal fix plans |
+| `plan-history` | Archive Cursor plans into `.agent/plan-history/` |
 | `maintainer` | Fork branches, upstream PRs, disclosure, demos, labels |
 | `dev-stack` | Compose up/down, rebuilds, restarts, :80 vs :8088 |
 | `dev-manage` | `manage.py`, fake media, DB export, shell in web |

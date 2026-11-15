@@ -1,9 +1,9 @@
 site_name: MediaCMS Documentation
 site_description: Guides for MediaCMS users, operators, administrators, and developers
 site_url: https://mrjoshuap.github.io/mediacms/
-repo_url: https://github.com/mediacms-io/mediacms
-repo_name: mediacms-io/mediacms
-edit_uri: edit/main/docs/
+repo_url: https://github.com/mrjoshuap/mediacms
+repo_name: mrjoshuap/mediacms
+edit_uri: edit/mediacms-next/docs/
 
 docs_dir: docs
 site_dir: site

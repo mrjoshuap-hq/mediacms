@@ -26,3 +26,5 @@ description: Run and extend MediaCMS backend/frontend tests and fix CI or lint f
 - `conftest.py`, `pytest.ini`, `.coveragerc`
 - `tests/_support/unimplemented.py`
 - `.github/workflows/` (`ci.yml`, `python.yml`, `frontend-build-and-test.yml`, `pre-commit.yml`)
+
+<!-- ci path-filter probe: meta-only -->

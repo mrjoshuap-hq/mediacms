@@ -1,5 +1,6 @@
 ---
 name: "CI"
+# ci path-filter probe: workflow-only
 # Branch roles (repository variables; defaults match a beta fork):
 #   MEDIACMS_STABLE_BRANCH — production line (default: main)
 #   MEDIACMS_BETA_BRANCH   — beta / next line (default: mediacms-next)

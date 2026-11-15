@@ -8,7 +8,7 @@ alwaysApply: true
 When you **create**, **substantially update**, or **finish implementing** a Cursor plan for this repo:
 
 1. Read `skills/plan-history/SKILL.md` and follow it before ending the turn that produced or closed out the plan.
-2. Copy the plan into `.agent/plan-history/` (preserve the `*.plan.md` filename from `~/.cursor/plans/`).
+2. Copy the plan into `.agent/plan-history/` (preserve the filename). Cursor plans use `*.plan.md`; other plan notes are `*.md`. `INDEX.md` and `README.md` are not plans.
 3. Refresh `INDEX.md` and `manifest.json` (prefer `skills/plan-history/scripts/refresh_index.py`).
 
 Do not leave MediaCMS plans only in `~/.cursor/plans/`. The project archive is required.

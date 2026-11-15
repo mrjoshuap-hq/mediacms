@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -13,6 +14,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_ARCHIVE = REPO_ROOT / ".agent" / "plan-history"
+# INDEX is the catalog. README is the folder guide, not a plan note.
+SKIP_NOTES = {"INDEX.md", "README.md"}
 
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---(?:\r?\n|$)", re.S)
 NAME_RE = re.compile(r"^name:\s*(.+?)\s*$", re.M)
@@ -44,19 +47,20 @@ def first_group(pattern: re.Pattern[str], text: str) -> str | None:
     return unquote(match.group(1))
 
 
-def load_manifest(archive: Path) -> tuple[dict[str, str], dict[str, str]]:
-    """Return (date by filename, updated by filename) from the current catalog."""
+def load_manifest(archive: Path) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Return (date, updated, content_sha256) keyed by filename from the current catalog."""
     path = archive / "manifest.json"
     dates: dict[str, str] = {}
     updated: dict[str, str] = {}
+    shas: dict[str, str] = {}
     if not path.is_file():
-        return dates, updated
+        return dates, updated, shas
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return dates, updated
+        return dates, updated, shas
     if not isinstance(data, list):
-        return dates, updated
+        return dates, updated, shas
     for row in data:
         if not isinstance(row, dict) or not isinstance(row.get("file"), str):
             continue
@@ -67,7 +71,16 @@ def load_manifest(archive: Path) -> tuple[dict[str, str], dict[str, str]]:
         stamp = row.get("updated")
         if isinstance(stamp, str) and stamp.strip():
             updated[filename] = stamp.strip()
-    return dates, updated
+        sha = row.get("content_sha256")
+        if isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{64}", sha):
+            shas[filename] = sha
+    return dates, updated, shas
+
+
+def content_sha256(path: Path) -> str:
+    """SHA-256 of the file bytes with CR and CRLF normalised to LF."""
+    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def git_stdout(archive: Path, *args: str) -> str | None:
@@ -181,7 +194,8 @@ def dirty_names(archive: Path, root: Path) -> set[str]:
     return names
 
 
-def plan_date(text: str, filename: str, manifest_dates: dict[str, str], first_add: dict[str, str], today: str) -> str:
+def explicit_date(text: str, filename: str, manifest_dates: dict[str, str]) -> str | None:
+    """Date from frontmatter, a `- Date:` line, or the manifest. None if git or today is next."""
     header = frontmatter(text)
     for pattern in (DATE_RE, CREATED_RE):
         value = first_group(pattern, header)
@@ -190,13 +204,7 @@ def plan_date(text: str, filename: str, manifest_dates: dict[str, str], first_ad
     body_date = BODY_DATE_RE.search(text)
     if body_date:
         return body_date.group(1)
-    recorded = manifest_dates.get(filename)
-    if recorded:
-        return recorded
-    added = first_add.get(filename)
-    if added:
-        return added[:10]
-    return today
+    return manifest_dates.get(filename)
 
 
 def plan_name(text: str, path: Path) -> str:
@@ -223,25 +231,21 @@ def plan_todos(text: str) -> dict[str, int]:
 def resolve_updated(
     *,
     filename: str,
-    dirty: set[str],
-    shallow: bool,
+    clean: bool,
     latest: dict[str, str],
-    manifest_updated: dict[str, str],
-    date: str,
+    recorded: str | None,
+    recorded_sha: str | None,
+    content_sha: str,
     now_iso: str,
 ) -> str:
-    if filename in dirty:
-        return now_iso
-    # A depth-1 history stamps every file with the tip commit. Keep the
-    # recorded snapshot so that checkout does not rewrite the catalog.
-    recorded = manifest_updated.get(filename)
-    if shallow and recorded:
+    """First match wins. See the plan-history skill for the four rules."""
+    if recorded and recorded_sha is not None and recorded_sha == content_sha:
         return recorded
-    if filename in latest:
+    if recorded and recorded_sha is None and clean:
+        return recorded
+    if clean and filename in latest:
         return latest[filename]
-    if recorded:
-        return recorded
-    return date
+    return now_iso
 
 
 def stamp_key(value: str) -> datetime:
@@ -308,7 +312,7 @@ def render_index(plans: list[dict]) -> str:
 
 def refresh(archive: Path) -> None:
     archive.mkdir(parents=True, exist_ok=True)
-    manifest_dates, manifest_updated = load_manifest(archive)
+    manifest_dates, manifest_updated, manifest_shas = load_manifest(archive)
     root = repo_root(archive)
     shallow = False
     latest: dict[str, str] = {}
@@ -316,8 +320,6 @@ def refresh(archive: Path) -> None:
     dirty: set[str] = set()
     if root is not None:
         shallow = is_shallow(archive)
-        if shallow:
-            print(SHALLOW_WARNING, file=sys.stderr)
         latest, first_add = collect_history(archive, root)
         dirty = dirty_names(archive, root)
 
@@ -325,27 +327,48 @@ def refresh(archive: Path) -> None:
     today = now.strftime("%Y-%m-%d")
     now_iso = now.isoformat(timespec="seconds")
     plans = []
-    for path in sorted(p for p in archive.glob("*.md") if p.name != "INDEX.md"):
+    blocked: list[str] = []
+    for path in sorted(p for p in archive.glob("*.md") if p.name not in SKIP_NOTES):
         text = path.read_text(encoding="utf-8", errors="replace")
-        date = plan_date(text, path.name, manifest_dates, first_add, today)
+        date = explicit_date(text, path.name, manifest_dates)
+        if date is None and path.name in first_add:
+            if shallow:
+                blocked.append(path.name)
+                continue
+            date = first_add[path.name][:10]
+        elif date is None:
+            date = today
+        clean = path.name not in dirty and path.name in latest
+        digest = content_sha256(path)
         plans.append(
             {
                 "file": path.name,
                 "date": date,
                 "updated": resolve_updated(
                     filename=path.name,
-                    dirty=dirty,
-                    shallow=shallow,
+                    clean=clean,
                     latest=latest,
-                    manifest_updated=manifest_updated,
-                    date=date,
+                    recorded=manifest_updated.get(path.name),
+                    recorded_sha=manifest_shas.get(path.name),
+                    content_sha=digest,
                     now_iso=now_iso,
                 ),
+                "content_sha256": digest,
                 "name": plan_name(text, path),
                 "overview": plan_overview(text),
                 "todos": plan_todos(text),
             }
         )
+    if blocked:
+        print(
+            "error: shallow git clone; refusing to take a git date for: " + ", ".join(blocked),
+            file=sys.stderr,
+        )
+        print("Run git fetch --unshallow for full history.", file=sys.stderr)
+        raise SystemExit(1)
+    if shallow:
+        print(SHALLOW_WARNING, file=sys.stderr)
+
     plans.sort(key=lambda row: row["file"])
     plans.sort(key=lambda row: stamp_key(row["updated"]), reverse=True)
 

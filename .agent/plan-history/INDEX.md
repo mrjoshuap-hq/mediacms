@@ -4,14 +4,13 @@ Archive of plans for this MediaCMS fork: Cursor plans and Architect design notes
 Live plans remain in `~/.cursor/plans/`; this folder is the project snapshot.
 
 **Latest snapshot:** 2026-11-14T19:41:11-05:00
-**Count:** 54 plans
+**Count:** 53 plans
 
 See `manifest.json` for machine-readable metadata. Archival workflow: `skills/plan-history/SKILL.md`.
 
 | Date | Plan | Overview | Todos |
 | ---- | ---- | -------- | ----- |
 | 2026-11-14 | [Release v10.0.0 promotion](release_v10.0.0_promotion.plan.md) | Promote mediacms-next to main for the first fork stable release v10.0.0.YYYYMMDD: draft cited release notes, open the... | completed: 5, pending: 4 |
-| 2026-11-14 | [Plan history archive](README.md) |  | — |
 | 2026-11-11 | [Admin change-form i18n](admin_change-form_i18n_dae5535b.plan.md) | Jazzmin change-form tabs already use frontend_translations for core fieldset titles, but field labels, help texts, fi... | completed: 5 |
 | 2026-11-11 | [Admin dashboard perf](admin_dashboard_perf_231f4e2e.plan.md) | Fix /admin/ pool timeouts under bulk transcoding by collapsing and caching the enhanced dashboard stats queries, then... | completed: 6 |
 | 2026-11-13 | [Admin dashboard sections](admin_dashboard_sections_c8084a90.plan.md) | Split the long Site overview into Health, Configuration, and a new System runtime page, add copy-as-text/CSV/Markdown... | completed: 6 |

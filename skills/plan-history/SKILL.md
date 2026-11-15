@@ -21,7 +21,7 @@ Skip non-MediaCMS plans (other products, homelab, unrelated repos).
 | Path | Role |
 | ---- | ---- |
 | `~/.cursor/plans/*.plan.md` | Live Cursor plans (source) |
-| `.agent/plan-history/*.md` | Project archive (every plan note except `INDEX.md`) |
+| `.agent/plan-history/*.md` | Project archive (every plan note except `INDEX.md` and `README.md`) |
 | `.agent/plan-history/INDEX.md` | Human catalog |
 | `.agent/plan-history/manifest.json` | Machine-readable metadata |
 
@@ -35,9 +35,12 @@ Preserve the original filename (e.g. `rbac_permissions_audit_ef026657.plan.md`).
 
 ```bash
 python3 skills/plan-history/scripts/refresh_index.py
+python3 skills/plan-history/scripts/refresh_index.py --archive PATH
 ```
 
-The script indexes every `*.md` file in `.agent/plan-history/` except `INDEX.md`. `date` comes from frontmatter (`date` or `created`), a `- Date: YYYY-MM-DD` line, the date already stored in `manifest.json`, or the first git commit that added the file. `updated` is the author date of the latest commit that touched the file. On a clean checkout, including a shallow one, a second run leaves `INDEX.md` and `manifest.json` unchanged. A shallow clone prints a warning and keeps recorded `updated` values, because a depth-1 history would stamp every file with the tip commit.
+The script indexes every `*.md` file in the archive except `INDEX.md` and `README.md` (`README.md` is the folder guide). `--archive` reads and writes a different directory. `date` comes from frontmatter (`date` or `created`), a `- Date: YYYY-MM-DD` line, the date already stored in `manifest.json`, or the first git commit that added the file. On a shallow clone, a note that still needs that git date is an error: the script names the files, tells you to run `git fetch --unshallow`, and does not write the catalog. A shallow clone that can date every note otherwise prints a one-line warning and continues.
+
+`updated` uses the first match: the recorded value when `content_sha256` equals the SHA-256 of the file's LF-normalised bytes; the recorded value for a legacy entry that has no hash while the file is clean in git (that run also stores the hash); the author date of the last commit when the file is tracked and clean; otherwise the current time, written once. The same bytes keep that `updated` on later runs, including after the file is committed and in a fresh clone. `content_sha256` is stored only in `manifest.json`. On a clean checkout a second run leaves `INDEX.md` and `manifest.json` unchanged.
 
 4. Briefly confirm archival in the reply (filename + that INDEX was refreshed). Do not commit unless the user asks.
 

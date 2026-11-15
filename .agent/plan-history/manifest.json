@@ -3,6 +3,7 @@
     "file": "release_v10.0.0_promotion.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:41:11-05:00",
+    "content_sha256": "e2fe39139090e7c27994c82ca054c8826d0bb6b8dbf68541615d4e533aa15648",
     "name": "Release v10.0.0 promotion",
     "overview": "Promote mediacms-next to main for the first fork stable release v10.0.0.YYYYMMDD: draft cited release notes, open the promotion PR, and hand merge, tag date, and tag to Joshua.",
     "todos": {
@@ -11,17 +12,10 @@
     }
   },
   {
-    "file": "README.md",
-    "date": "2026-11-14",
-    "updated": "2026-11-14T19:00:52-05:00",
-    "name": "Plan history archive",
-    "overview": "",
-    "todos": {}
-  },
-  {
     "file": "admin_change-form_i18n_dae5535b.plan.md",
     "date": "2026-11-11",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "59565e8e333c874dfddc0ab07235627d357c70ee47034a1d4c9836764827a561",
     "name": "Admin change-form i18n",
     "overview": "Jazzmin change-form tabs already use frontend_translations for core fieldset titles, but field labels, help texts, fieldset descriptions, related-link copy, and most integration-app tabs are still English. Wire those through the same custom_translate/translate_string pattern used for lists/dashboard, then add Greek (el) translations.",
     "todos": {
@@ -32,6 +26,7 @@
     "file": "admin_dashboard_perf_231f4e2e.plan.md",
     "date": "2026-11-11",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "297ecaa5391e880f22d659be97e4cce984756955a429b3632c08989f9774675e",
     "name": "Admin dashboard perf",
     "overview": "Fix /admin/ pool timeouts under bulk transcoding by collapsing and caching the enhanced dashboard stats queries, then trimming the heaviest Media/Encoding admin changelist patterns that amplify DB load.",
     "todos": {
@@ -42,6 +37,7 @@
     "file": "admin_dashboard_sections_c8084a90.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "078b0125d05b60ac8e5fd52a5a9f94d2c9353546258d1b38e26eb2232abaaa16",
     "name": "Admin dashboard sections",
     "overview": "Split the long Site overview into Health, Configuration, and a new System runtime page, add copy-as-text/CSV/Markdown on those tables, add a Get Support page with a redacted bundle and issue starters, wire sections into the dashboard switcher and sidebar, and fix sidebar indent overflow plus add expand/collapse all.",
     "todos": {
@@ -52,6 +48,7 @@
     "file": "admin_dashboard_stats_b28e758e.plan.md",
     "date": "2026-11-08",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "0925b59b3eadee665b88506c471572888f1e8b0b63900ce5fbd394f25f112ca3",
     "name": "Admin dashboard stats",
     "overview": "Add nine new top-N / recent-event tables to the existing Jazzmin admin dashboard by extending ORM aggregations in `admin_customizations/admin.py` and matching table cards in `templates/admin/index.html`, with no schema changes.",
     "todos": {
@@ -62,6 +59,7 @@
     "file": "admin_filter_bar_f6414fda.plan.md",
     "date": "2026-11-12",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "4aacfd487654bcaf6e9638d9f56d1f6b6ce927309cfffc6c672e78ccfd468960",
     "name": "Admin filter bar",
     "overview": "Restyle every admin changelist filter bar into a full-width, collapsible box with labeled controls chosen from the field type. Query parameters and models stay the same, so no migrations and no broken dashboard links.",
     "todos": {
@@ -72,6 +70,7 @@
     "file": "admin_list_i18n_6837c24e.plan.md",
     "date": "2026-11-10",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "a01c5cecbd2c7e1202a89c8feab68927d93e2cc69bf2cd9bd5fb1658cacc1192",
     "name": "Admin list i18n",
     "overview": "Internationalize Jazzmin changelist surfaces (Add button, column headers, filters, column chooser, pagination totals) through MediaCMS custom_translate and translate_string, then add English keys and Greek translations.",
     "todos": {
@@ -82,6 +81,7 @@
     "file": "admin_login_theme_253e2f1d.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "58a96e007b83910e182290ab90ad300cb94dfa50ca9a1372d73c3b12f18f07fc",
     "name": "Admin login theme",
     "overview": "Keep the admin login and logout URLs separate, and render both inside the same public account card and site shell, with language and theme controls on the card.",
     "todos": {
@@ -92,6 +92,7 @@
     "file": "admin_moderation_enhancements_66f3ad33.plan.md",
     "date": "2026-11-08",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "3f47c2c2e28a05019288cef6993f4b9ed29e116960d128131028b1a102cec019",
     "name": "Admin Moderation Enhancements",
     "overview": "Close the dashboard-to-admin moderation gap with bulk actions, then harden Media/MediaAction/Comment/User/Encoding changelists using stock Django+Jazzmin filters, sortable columns, richer defaults, and list_editable \u2014 without a custom per-user column picker.",
     "todos": {
@@ -102,6 +103,7 @@
     "file": "admin_object_actions_37d017c0.plan.md",
     "date": "2026-11-08",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "e6efc18c19a6c1b65d2fc48eabc6972e42cac54ff197e802eb72f88891d68731",
     "name": "Admin object actions",
     "overview": "Add a reusable Actions dropdown on every Django admin change form (Jazzmin object-tools), reusing each ModelAdmin\u2019s existing get_actions() so Media, Encoding, MediaAction, User, and LTIToolKeys (and any future actions) work from the single-object page.",
     "todos": {}
@@ -110,6 +112,7 @@
     "file": "admin_object_actions_e3f19368.plan.md",
     "date": "2026-11-08",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "628402de79ac97619d48902c41da14f63f330965bc79c8b1c90a9c6fa1111a44",
     "name": "Admin object actions",
     "overview": "Add a reusable Actions dropdown on every Django admin change form (Jazzmin object-tools), reusing each ModelAdmin\u2019s existing get_actions() so Media, Encoding, MediaAction, User, and LTIToolKeys (and any future actions) work from the single-object page.",
     "todos": {
@@ -120,6 +123,7 @@
     "file": "admin_portal_translations_ef27a233.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "9af35e37710c60641fad7fdc903e35d8d28d9742528aeab6f704c55e8e080d41",
     "name": "Admin portal translations",
     "overview": "Close the admin-portal translation gaps on every dashboard, overview, change form, changelist, and related template, then fill that string set in parallel. Each language pass records problems that need code or template changes. After the translations, one MediaCMS expert reviews those findings and recommends fixes and tests. Model changes stay rare, and database migrations are not allowed.",
     "todos": {
@@ -130,6 +134,7 @@
     "file": "admin_portal_tweaks_dd906bde.plan.md",
     "date": "2026-11-10",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "0a51aeb4f3a450b338885607b5ad7ee45d317b72bef43a566b93e0957e99fd93",
     "name": "Admin portal tweaks",
     "overview": "Polish the admin moderation dashboard and related list UX: replace Top reviewers with Recent reports, deep-link Open buttons to the media Reports tab, normalize Actions/Go layout, add EncodeProfile inline toggles, and align remaining ModelAdmins that have custom actions with the grouped Actions dropdown standard.",
     "todos": {
@@ -140,6 +145,7 @@
     "file": "admin_relationship_navigation_79ec68d9.plan.md",
     "date": "2026-11-08",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "033994c88b71a1c62808f62d07926445cde838258da58a961b74463205cf922c",
     "name": "Admin Relationship Navigation",
     "overview": "Add Django admin relationship navigation so Media (and related models) expose related comments, encodings, playlists, and other children via readonly inlines on change pages plus clickable filtered changelist links from list/change views.",
     "todos": {
@@ -150,6 +156,7 @@
     "file": "admin_shared_theme_718a0318.plan.md",
     "date": "2026-11-12",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "c78b46b4a8c23bf3490fb3db7bfe173314628c6ebfce36be6645dd0b6e833021",
     "name": "Admin shared theme",
     "overview": "Make the Jazzmin admin follow the public site\u2019s existing light/dark preference by reading the same localStorage key and turning on AdminLTE\u2019s built-in dark-mode styles. No second toggle, no Bootswatch swap, and no change to how the frontend stores the setting.",
     "todos": {
@@ -160,6 +167,7 @@
     "file": "anonymous_members_page_6644c7ac.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "c00651e75b780b63eac251ad6178ecb2069e73714af211dd7fc68759915b804f",
     "name": "Anonymous members page",
     "overview": "Add a new `CAN_SEE_MEMBERS_PAGE = \"anonymous\"` value so non-registered users can see the members page and nav link, while keeping `\"all\"` as registered-users-only. Update context/API wiring, docs, and tests.",
     "todos": {
@@ -170,6 +178,7 @@
     "file": "api_upload_metadata_e9f191f8.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "3e22306a6a8fa273614f2f3296e4da332713f92dc14079865e10c59a3664f6e9",
     "name": "API upload metadata",
     "overview": "Extend the media API so upload/update can set category, visibility, and (for editors) owner; and add a light FineUploader queue UI with MediaCMS-default batch controls plus per-completed-item state/category Save \u2014 without a major frontend redesign.",
     "todos": {
@@ -180,6 +189,7 @@
     "file": "branch_merge_audit_order_ae4c9e34.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "b746bff542a5b7c2dedf3b4921246c16ad09fd67e6e4b17864d0a2898fe73db4",
     "name": "Branch merge audit order",
     "overview": "Audit and ordered integration of 17 local feature/fix branches into `mediacms-next` without rewriting those branches. Prefer cherry-pick / surgical re-apply of unique non-merge commits onto current next (~87 commits ahead of shared base), with MkDocs + `fork-whats-new` adaptation, tests, and hub-file sequencing.",
     "todos": {
@@ -190,6 +200,7 @@
     "file": "changelist_column_layout_d251200e.plan.md",
     "date": "2026-11-12",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "a455b2a6a04f28af5df7401c0ad5c2dbc34aebe5dfb814e2d9ce0720d0045540",
     "name": "Changelist column layout",
     "overview": "Tighten every admin changelist: sortable columns show an up/down hint until they are the active sort, icon columns stay centered, and rows that have a public page get an eye link. Then fix the specific title, tag, comment, trim, and caption layouts.",
     "todos": {
@@ -200,6 +211,7 @@
     "file": "cjk_search_fix_61550d16.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "22731c23d91536fee79b3e121abd687033f9565fe434e47aef1646fd2cf414fd",
     "name": "CJK Search Fix",
     "overview": "Fix MediaCMS CJK search (#1474) by extracting the duplicated search-query builder into a shared helper that keeps Latin Postgres FTS prefix matching unchanged, while using title/description substring matching for CJK tokens so mid-string queries work.",
     "todos": {
@@ -210,6 +222,7 @@
     "file": "clear_password_removal_ux_df8c25d9.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "5c9dce1f38bd63ab01d1f387363a7f8bf28554069cabde3725f4fda7e20b29a3",
     "name": "Clear password removal UX",
     "overview": "Make password-protection status and removal obvious on the Publish form: show when a password is active, and present a clear remove control instead of an easy-to-miss checkbox under an empty password field.",
     "todos": {
@@ -220,6 +233,7 @@
     "file": "combined_login_providers_468c854c.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "e919be6a5f04852769f8f09cb49a93c4c7916f4250719a4f838e064054ba59ac",
     "name": "Combined login providers",
     "overview": "Replace the login dropdown with one auth card that offers a local password and large provider buttons, and make new identity providers a catalog-driven admin form on the existing SocialApp and LoginOption tables. No schema changes.",
     "todos": {
@@ -230,6 +244,7 @@
     "file": "dashboard_section_reorder_a4ed9508.plan.md",
     "date": "2026-11-08",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "e577193c6a515195c13eb73aae4423121fc38639c83d73c915cd5fb25768d407",
     "name": "Dashboard section reorder",
     "overview": "Reorder the admin dashboard, strengthen Content Moderation and User Statistics (approval workflow without new audit logs), and trim/refocus Media Overview metrics.",
     "todos": {
@@ -240,6 +255,7 @@
     "file": "dashboard_translation_support_5c47a21d.plan.md",
     "date": "2026-11-10",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "4ecfae9fdaeb9a4044c06d193c6c5b7ad68504cc8a1ca4c484f8ab08d1928962",
     "name": "Dashboard translation support",
     "overview": "MediaCMS-standard translations (custom_translate + STE100 strings), friendly_token delete confirmation, RTL-safe dashboard UI, and clearer grouped Actions dropdowns (bulk + object) visually separated from search/filters.",
     "todos": {
@@ -250,6 +266,7 @@
     "file": "database_status_page_7816457b.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "40bc62114185252f2805e88de2d9a3aa0e902a04772924bf0427809fe567d20f",
     "name": "Database status page",
     "overview": "Add a Database status overview with PostgreSQL health counters and a superuser database-backup download that keeps reports and audit records only.",
     "todos": {
@@ -260,6 +277,7 @@
     "file": "fake_media_generator_e5d6c649.plan.md",
     "date": "2026-11-10",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "b573b5884c8bc456ba2274e2cc7fbdda0a04a5f60b4d72690108f6f6dd8276a4",
     "name": "Fake media generator",
     "overview": "Extend only `populate_fake_media.py` so demo data includes captions/chapters from the existing sample VTT assets, realistic MediaPermission share patterns across users, and two CMS Pages \u2014 without touching other application code.",
     "todos": {
@@ -270,6 +288,7 @@
     "file": "filesystem_media_import_83291475.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "d82b1f3fd096f4dad7675d9fa7b91c36ad70776fe31b81812ac8e093eb4ffe63",
     "name": "Filesystem media import",
     "overview": "Standardize sharded uid media paths, filesystem library sync under /external-media_files, and a gated single/bulk path-migrate MediaAction that only removes legacy paths after 100% verification of the new layout.",
     "todos": {
@@ -281,6 +300,7 @@
     "file": "fix_chapters_split_save_53fe907c.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "482b99592ebf00c445e9f3c2251f1c5d910e831b0605f6c59401ca51719216d5",
     "name": "Fix chapters split save",
     "overview": "Issue #1568 is still open and reproducible in current code: Split leaves empty `chapterTitle`s, save drops them, and the UI masks the empties. Fix renumbering (and related empty-title paths), then rebuild the chapters editor static bundle.",
     "todos": {
@@ -291,6 +311,7 @@
     "file": "fix_contact_email_c693d002.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "afa34db09674efbbbd983bc3ce5dc84d90385e9b34a9b608688365b09ec17b2a",
     "name": "Fix contact email",
     "overview": "Issue #1626 is caused by three interacting bugs: contact success is reported after a silent Celery enqueue (not SMTP delivery), default EMAIL_USE_TLS=True conflicts with port-465/SSL setups, and missing EMAIL_TIMEOUT lets SMTP hang forever. Fix all interactive email flows (site contact, profile contact, allauth), add a timeout, and document TLS vs SSL. Background notifications keep Celery but inherit the timeout/docs fix.",
     "todos": {
@@ -301,6 +322,7 @@
     "file": "fix_encoding_chunk_cleanup_a75240fd.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "c55e6419b99ce996a7ebdee88168bf2fad2cc1becbc93426eaff9ac8ee9408ac",
     "name": "Fix encoding chunk cleanup",
     "overview": "Issue #942 is still applicable: failed chunk encodings do not reliably collapse to a single fail Encoding, and source `.mkv` segment files are never deleted on the fail path. Fix the fail signal immediately (with the same shared-chunks gate as success), then add a Celery beat sweeper for orphans left by past failures.",
     "todos": {
@@ -311,6 +333,7 @@
     "file": "fix_fullscreen_autoplay_97cc7f33.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "ae40c100c724086719728bee5eb96505f40661573812a572d79efb4a0569909d",
     "name": "Fix fullscreen autoplay",
     "overview": "Issue #1051 is still applicable: autoplay/next navigates with `window.location.href`, which tears down the fullscreen element. Fix by soft-navigating and swapping the source on the existing Video.js player so fullscreen is preserved.",
     "todos": {
@@ -321,6 +344,7 @@
     "file": "fix_issue_962_hls_d554336a.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "c3f32c7512ca5d2670beaa5f051dbb9e1d37f15afc6d228882c57fe6d63b79b6",
     "name": "Fix Issue 962 HLS",
     "overview": "Issue #962 is still applicable: every successful h264 encoding still enqueues a full Bento rebuild of all MP4s. Resolve it with incremental HLS packaging (maintainer-preferred), so each encoding only packages itself and merges into master.m3u8.",
     "todos": {}
@@ -329,6 +353,7 @@
     "file": "fix_media_count_1627_334913c6.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "cdbd2362b375462f9c258ddc2f1135b5b02a47b8b566d20d2a4b58dc7e2b3f4e",
     "name": "Fix media count 1627",
     "overview": "Fix [mediacms-io/mediacms#1627](https://github.com/mediacms-io/mediacms/issues/1627) by stopping denormalized `User.media_count` and computing listable media counts at read time in Django admin, which also fixes stale counts after ownership changes.",
     "todos": {
@@ -339,6 +364,7 @@
     "file": "fix_playlist_delete_3039076d.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "ba1bb6a5000135a8a7aacb997bede6149d9d47fba6d5644a67de083b498b1af1",
     "name": "Fix playlist delete",
     "overview": "Make playlist deletion discoverable and reliable on the playlist detail page. Backend DELETE already works; the only delete control is a \u22ef menu that is easy to miss and easy to clip, so owners effectively cannot delete playlists.",
     "todos": {
@@ -349,6 +375,7 @@
     "file": "frontend_test_coverage_f09d3353.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "3fdd69c89de415b2d36ae17c2610dc42d27ff937794e2f5061966ba77545522e",
     "name": "Frontend test coverage",
     "overview": "Audit of the MediaCMS Jest suite (~130 files, ~1,050 cases) shows strong unit coverage of utils/stores/leaf components, but nearly zero page-level workflow tests and critical gaps around media password unlock, video playback, shell search, and migrations. The plan fills those gaps in priority order, adds a `testUnimplemented` warn-mode convention for stubbed features, and fixes tests that currently lock in known bugs.",
     "todos": {
@@ -359,6 +386,7 @@
     "file": "ghcr_beta_stable_releases_ede5c985.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "4e2c2ffe7cf291d609bba4d78745eb1c6e716ff89de7340111fa10835f227eae",
     "name": "GHCR beta stable releases",
     "overview": "Replace Docker Hub\u2013centric release with a fork-oriented pipeline: GHCR images (base + full + upgrade-audit aliases), date-stamped versions, beta pre-releases on every mediacms-next push, and stable GitHub Releases only from matching version tags.",
     "todos": {
@@ -369,6 +397,7 @@
     "file": "integrations_dashboard_57f667eb.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "0e35262b56288e19ae8c93fe9fe1006ede6f405fffd3a6ed950b70260b19ed1d",
     "name": "Integrations dashboard",
     "overview": "Move Integrations above Site in the admin sidebar and dashboard switcher, and add an Integrations overview that reports counts for the same objects the sidebar lists, using the existing status-box and object-total patterns.",
     "todos": {
@@ -379,6 +408,7 @@
     "file": "issue_927_applicability_29a4d259.plan.md",
     "date": "2026-11-09",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "48c1e442c39ec2034ac3a688570d1b01d3cf96aaed93bde1312e9abbaef2d16a",
     "name": "Issue 927 applicability",
     "overview": "Issue #927 (VideoPlayer duplicated into `_commons.js` and `media.js`) is no longer applicable after the Video.js v8 upgrade removed that component and disabled listing-page player usage. Resolution is to close the issue with verified findings\u2014not a webpack refactor.",
     "todos": {
@@ -389,6 +419,7 @@
     "file": "media_admin_actions_3597a8d4.plan.md",
     "date": "2026-11-08",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "339cc1a8ac1ea0f38ec6c2296e6fe12253827244d4dc17dadec4a3f7db7e5123",
     "name": "Media admin actions",
     "overview": "Add schema-free Media (and Encoding) admin actions for force re-encode, derivative regeneration, delete-original-with-typed-confirm, change owner, retry failed encodings, and a clearer report triage workflow built on existing private + clear-reports behavior.",
     "todos": {
@@ -399,6 +430,7 @@
     "file": "media_change_form_tweaks_8aca83be.plan.md",
     "date": "2026-11-12",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "4b801eb41f0edd122f8a381a2f0e152a030df7f54173e1b175f458b18491da64",
     "name": "Media change form tweaks",
     "overview": "Tighten the media change form: theme-capable tabs, image previews with click-or-drop replace at the top of Content, edit/inspect icons on object links, and a slimmer Reports tab.",
     "todos": {
@@ -409,6 +441,7 @@
     "file": "media_integrity_refresh_7691a7f3.plan.md",
     "date": "2026-11-12",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "80d3dd918417932fb750059c459b9ea4f931f5fbc0a2db500a174ef7f28b9520",
     "name": "Media integrity refresh",
     "overview": "Add a queued MediaAdmin bulk action that fills missing media/encoding metadata, audits the run, and records integrity warnings for missing files and md5/size mismatches\u2014plus Site Health aggregates from DB-cheap signals and recent warning audits.",
     "todos": {
@@ -419,6 +452,7 @@
     "file": "mediacms_agent_skills_e487853e.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "8febba0485a852907dd250127ba39ad53b31174ca8fe1f21f74d4ce0b267f7a6",
     "name": "MediaCMS Agent Skills",
     "overview": "Slim always-on AGENTS.md + thin CLAUDE.md, add a shared `skills/` tree (symlinked for Cursor/Claude/Codex), and ship eight high-frequency MediaCMS skills derived from ~83 recent agent transcripts\u2014favoring lazy-loaded docs pointers and minimal-impact change defaults.",
     "todos": {
@@ -429,6 +463,7 @@
     "file": "mediacms_docs_site_e342ef87.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "a290bf80047b2ef655b801249bb1dff1e25ce3ad6d56a3e2025fc0836e600dd8",
     "name": "MediaCMS docs site",
     "overview": "Publish a versioned MkDocs Material site to GitHub Pages from this repo. Markdown guides take a beginner through the six roles to admin and developer work, and each demonstration scenario is a recordable script tied to existing tests.",
     "todos": {
@@ -439,6 +474,7 @@
     "file": "merge_enhanced_logging_d33a4be4.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "27ec48d26a4bb537b243446da13008b7e79ab233b66740e8495dcfc151634e73",
     "name": "Merge enhanced logging",
     "overview": "Merge `feat/enhanced-logging` into `mediacms-next`, resolve conflicts to keep dashboard + logging behavior, retrofit logging onto admin-dashboard code, update MkDocs in established patterns, and write an accurate fork changelog from the final diff only (never hand-edit upstream CHANGELOG.md), then run the full test suite and only commit once green.",
     "todos": {
@@ -450,6 +486,7 @@
     "file": "moderation_action_events_eff166c7.plan.md",
     "date": "2026-11-08",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "525f622b82a017af3784ae49fdf050b0b6f4c6fff1fb29a40e024432e188f425",
     "name": "Moderation Action Events",
     "overview": "Feasibility is high: extending MediaAction with moderator-only audit types (`report_cleared`, `media_reviewed` / `media_unreviewed`) is a small, localized change if we keep them out of the public save_user_action pipeline and emit them from existing clear/review code paths.",
     "todos": {}
@@ -458,6 +495,7 @@
     "file": "node_lint_pre-commit_60503ed7.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "2a486a6f23e419181025ce6d4f9bfa7dabc677292c1d1a893b72dd50c7f6fafa",
     "name": "Node lint pre-commit",
     "overview": "Enable Prettier + ESLint across frontend/ and frontend-tools/, add standard hygiene hooks to pre-commit, and wire CI so Node checks run green on every PR.",
     "todos": {
@@ -468,6 +506,7 @@
     "file": "proxy_ssl_media_health_c1b71489.plan.md",
     "date": "2026-11-12",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "aac7ee63a35d456286f3d0846e29a2e149f30eb2760922da48e35306c32c5c92",
     "name": "Proxy SSL media health",
     "overview": "Extend Site Health with reverse-proxy/SSL/CORS/cookie settings checks and live MEDIA_ROOT/HLS/TEMP read-write permission probes, wired into the existing dashboard health table.",
     "todos": {
@@ -478,6 +517,7 @@
     "file": "python_test_suite_review_37ccec0d.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "7856e0a9c4dba59e3a85c6838127958201f390408a96f40e15e7972007f49d0e",
     "name": "Python test suite review",
     "overview": "One PR that adds a pytest unimplemented (warn) helper, fills prioritized gaps across every pytest-discovered package (tests/ + migrationservice/tests/), updates developer docs with a coverage matrix, and proves the full suite green via docker compose.",
     "todos": {
@@ -488,6 +528,7 @@
     "file": "rbac_permissions_audit_ef026657.plan.md",
     "date": "2026-11-14",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "252bea3d8872fc22ef9e7bc17f197c831f578b6de2730ae548488983738b26cb",
     "name": "RBAC permissions audit",
     "overview": "Full audit of MediaCMS global roles, settings gates, MediaPermission sharing, and USE_RBAC category roles against the roles/permissions docs, then fix mismatches, extend existing tests (plus a config\u00d7ACL matrix for combinations like MEDIA_IS_REVIEWED), and publish a before/after access-change warning table.",
     "todos": {
@@ -498,6 +539,7 @@
     "file": "shared_theme_switch_a32f7892.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "c419b56e388955838176a66c1d7fee8feef160b9e888c5900a4f5c62328a8288",
     "name": "Shared theme switch",
     "overview": "Make the login page and the admin portal use the same theme control as the frontend sidebar: sun on the left, switch in the middle, moon on the right, with the active side in the highlight color and the other side grey.",
     "todos": {}
@@ -506,6 +548,7 @@
     "file": "sync_enhanced_logging_pr_9ba730a1.plan.md",
     "date": "2026-11-07",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "c19242dfe92368cc79dde2cba12b6aee4239e6d9233f51811163308656e7eea7",
     "name": "Sync enhanced logging PR",
     "overview": "Sync PR #1455 (feat/enhanced-logging) with upstream main via merge, resolve ~14 conflicts while keeping logging and trusted-proxy IP detection, drop deleted uWSGI bits, leave push to you.",
     "todos": {
@@ -516,6 +559,7 @@
     "file": "theme-aligned_admin_colors_1ffca476.plan.md",
     "date": "2026-11-12",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "6ca4b6454bcf193469a2add93ca094ef27d68539c9ddfbcd15d1644e8c335e39",
     "name": "Theme-aligned admin colors",
     "overview": "Stop painting the admin with AdminLTE\u2019s gray dark-mode palette. Drive Bootswatch Darkly from the existing light/dark preference, add a header switcher beside the language picker, and point custom changelist, change-form, and dashboard colors at the active theme\u2019s CSS variables so Flatly and Darkly stay consistent.",
     "todos": {
@@ -527,6 +571,7 @@
     "file": "upgrade_audit_plan_dc891901.plan.md",
     "date": "2026-11-13",
     "updated": "2026-11-14T19:00:52-05:00",
+    "content_sha256": "23615a4e47d5d93875aed5db478d5461d7d492f197476b9c040a2cc0ea338d48",
     "name": "Upgrade audit plan",
     "overview": "Add a read-only upgrade audit, profiled database exports, sidebar page placement, and a browse-only pending-approval state, with contract tests for each and Compose checks for the scratch database.",
     "todos": {

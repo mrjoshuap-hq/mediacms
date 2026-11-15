@@ -212,6 +212,11 @@ jobs:
           name: docs-prepared
           path: docs
 
+      # griffe resolves `from .local_settings import *` in cms/settings.py.
+      # The build job creates this file during OpenAPI export. It is not in the docs artifact.
+      - name: Stub local settings for mkdocstrings
+        run: touch cms/local_settings.py
+
       - name: Deploy versions with mike
         env:
           DOCS_CHANNEL: ${{ needs.build.outputs.channel }}

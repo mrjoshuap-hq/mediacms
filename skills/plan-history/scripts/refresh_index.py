@@ -136,6 +136,9 @@ def collect_history(archive: Path, root: Path) -> tuple[dict[str, str], dict[str
     latest: dict[str, str] = {}
     added: dict[str, str] = {}
     renamed_from: dict[str, str] = {}
+    # Walking newest-first, a delete ends the current file. Older adds of the
+    # same filename belong to a previous note and must not replace this date.
+    ended: set[str] = set()
     current: str | None = None
     for line in output.splitlines():
         if not line.strip():
@@ -151,11 +154,14 @@ def collect_history(archive: Path, root: Path) -> tuple[dict[str, str], dict[str
             name = entry_name(path, archive, root)
             if name:
                 names.append(name)
-        if code == "R" and len(names) == 2:
+        if code == "D":
+            ended.update(names)
+        elif code == "R" and len(names) == 2 and names[1] not in ended:
             renamed_from.setdefault(names[1], names[0])
-        if code == "A":
+        elif code == "A":
             for name in names:
-                added[name] = current
+                if name not in ended:
+                    added[name] = current
         for name in names:
             latest.setdefault(name, current)
     first_add: dict[str, str] = {}
@@ -226,6 +232,23 @@ def plan_todos(text: str) -> dict[str, int]:
     for status in STATUS_RE.findall(text):
         counts[status] = counts.get(status, 0) + 1
     return counts
+
+
+def updated_needs_git(
+    *,
+    filename: str,
+    clean: bool,
+    latest: dict[str, str],
+    recorded: str | None,
+    recorded_sha: str | None,
+    content_sha: str,
+) -> bool:
+    """True when rule 3 would take `updated` from git rather than the manifest."""
+    if recorded and recorded_sha is not None and recorded_sha == content_sha:
+        return False
+    if recorded and recorded_sha is None and clean:
+        return False
+    return bool(clean and filename in latest)
 
 
 def resolve_updated(
@@ -340,6 +363,17 @@ def refresh(archive: Path) -> None:
             date = today
         clean = path.name not in dirty and path.name in latest
         digest = content_sha256(path)
+        recorded = manifest_updated.get(path.name)
+        recorded_sha = manifest_shas.get(path.name)
+        if shallow and updated_needs_git(
+            filename=path.name,
+            clean=clean,
+            latest=latest,
+            recorded=recorded,
+            recorded_sha=recorded_sha,
+            content_sha=digest,
+        ):
+            blocked.append(path.name)
         plans.append(
             {
                 "file": path.name,
@@ -348,8 +382,8 @@ def refresh(archive: Path) -> None:
                     filename=path.name,
                     clean=clean,
                     latest=latest,
-                    recorded=manifest_updated.get(path.name),
-                    recorded_sha=manifest_shas.get(path.name),
+                    recorded=recorded,
+                    recorded_sha=recorded_sha,
                     content_sha=digest,
                     now_iso=now_iso,
                 ),
@@ -361,7 +395,7 @@ def refresh(archive: Path) -> None:
         )
     if blocked:
         print(
-            "error: shallow git clone; refusing to take a git date for: " + ", ".join(blocked),
+            "error: shallow git clone; refusing to take a git date for: " + ", ".join(sorted(set(blocked))),
             file=sys.stderr,
         )
         print("Run git fetch --unshallow for full history.", file=sys.stderr)

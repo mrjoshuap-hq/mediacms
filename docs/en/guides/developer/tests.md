@@ -203,3 +203,5 @@ When a product feature is expected but the code is stubbed or missing, add a war
 3. Do not start real Celery workers. Eager mode runs the tasks.
 4. For stubbed product behavior, use `@unimplemented` instead of a failing assertion.
 5. Run the new test alone, then run `make test-backend` (or `make test` for backend and frontend).
+
+<!-- ci path-filter probe: cancel follow-up, docs-only -->

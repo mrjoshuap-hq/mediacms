@@ -39,6 +39,12 @@ isProject: false
 - Rules: `AGENTS.md` and skills `fork-docs-release`, `maintainer`, `merge-hygiene`, `plan-history` on `mediacms-next`; `engineering/RULES.md` in bot-journal (sections 4, 5, 6, 8, 11).
 - Tracking: milestone `M4 Fork 10.0.0 stable`, issues #23 (epic), #24 (stable tags on main), #26 (first stable cut checklist, `agent: plan-only`).
 
+## Links
+
+- Notes PR into `mediacms-next`: https://github.com/mrjoshuap/mediacms/pull/84
+- Promotion PR `mediacms-next` -> `main`: https://github.com/mrjoshuap/mediacms/pull/85 (labels `release-approval`, `triage: needs-joshua`)
+- Journal PR: https://github.com/mrjoshuap/bot-journal/pull/5
+
 ## Scope
 
 - Promote all of `mediacms-next` to `main`. At the snapshot, `mediacms-next` (`7eb9447`) is 115 commits ahead of `main` (`e25fb95`) and 0 behind. A merge has no conflicts (`main` is an ancestor of `mediacms-next`).

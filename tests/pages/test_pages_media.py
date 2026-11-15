@@ -29,10 +29,10 @@ class MediaPageAccessTest(TestCase):
             self.client.force_login(user)
         return self.client.get("/view", {"m": token or self.media.friendly_token})
 
-    def assert_permissions(self, response, edit, delete):
+    def assert_permissions(self, response, edit, delete_comments, delete_media):
         self.assertEqual(response.context["CAN_EDIT_MEDIA"], edit)
-        self.assertEqual(response.context["CAN_DELETE_COMMENTS"], edit)
-        self.assertEqual(response.context["CAN_DELETE_MEDIA"], delete)
+        self.assertEqual(response.context["CAN_DELETE_COMMENTS"], delete_comments)
+        self.assertEqual(response.context["CAN_DELETE_MEDIA"], delete_media)
 
     def test_anonymous_user_sees_the_media_page_without_edit_rights(self):
         response = self.view()
@@ -40,23 +40,28 @@ class MediaPageAccessTest(TestCase):
         self.assertTemplateUsed(response, "cms/media.html")
         self.assertEqual(response.context["media_object"], self.media)
         self.assertEqual(response.context["media"], self.media.friendly_token)
-        self.assert_permissions(response, edit=False, delete=False)
+        self.assert_permissions(response, edit=False, delete_comments=False, delete_media=False)
         self.assertContains(response, f'mediaId: "{self.media.friendly_token}"')
 
     def test_owner_can_edit_and_delete(self):
-        self.assert_permissions(self.view(self.owner), edit=True, delete=True)
+        self.assert_permissions(self.view(self.owner), edit=True, delete_comments=True, delete_media=True)
 
     def test_other_user_can_neither_edit_nor_delete(self):
-        self.assert_permissions(self.view(self.other), edit=False, delete=False)
+        self.assert_permissions(self.view(self.other), edit=False, delete_comments=False, delete_media=False)
 
     def test_mediacms_editor_can_edit_and_delete_any_media(self):
-        self.assert_permissions(self.view(self.editor), edit=True, delete=True)
+        self.assert_permissions(self.view(self.editor), edit=True, delete_comments=True, delete_media=True)
 
     def test_user_shared_as_editor_can_edit_but_not_delete(self):
-        self.assert_permissions(self.view(self.shared_editor), edit=True, delete=False)
+        self.assert_permissions(self.view(self.shared_editor), edit=True, delete_comments=False, delete_media=False)
 
     def test_user_shared_as_viewer_gets_no_edit_rights(self):
-        self.assert_permissions(self.view(self.shared_viewer), edit=False, delete=False)
+        self.assert_permissions(self.view(self.shared_viewer), edit=False, delete_comments=False, delete_media=False)
+
+    def test_user_shared_as_owner_can_edit_and_delete_media(self):
+        co_owner = create_account()
+        MediaPermission.objects.create(owner_user=self.owner, user=co_owner, media=self.media, permission="owner")
+        self.assert_permissions(self.view(co_owner), edit=True, delete_comments=False, delete_media=True)
 
     def test_unknown_token_renders_the_page_without_a_media(self):
         response = self.client.get("/view", {"m": "doesnotexist"})
@@ -190,6 +195,13 @@ class MembersPageTest(TestCase):
     @override_settings(CAN_SEE_MEMBERS_PAGE="all")
     def test_anonymous_user_is_not_offered_the_members_link(self):
         self.assertFalse(self.members().context["CAN_SEE_MEMBERS_PAGE"])
+
+    @override_settings(CAN_SEE_MEMBERS_PAGE="anonymous")
+    def test_anonymous_user_is_offered_the_members_link_when_open_to_anonymous(self):
+        response = self.members()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["CAN_SEE_MEMBERS_PAGE"])
+        self.assertTrue(self.members(self.user).context["CAN_SEE_MEMBERS_PAGE"])
 
     @override_settings(CAN_SEE_MEMBERS_PAGE="editors")
     def test_only_editors_see_members_when_restricted_to_editors(self):

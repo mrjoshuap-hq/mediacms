@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
       args:
         - DEVELOPMENT_MODE=True
-    image: mediacms/mediacms:latest
+    image: ${MEDIACMS_DEV_IMAGE:-mediacms-dev:latest}
     volumes:
       - ../:/home/mediacms.io/mediacms/
     command: "/home/mediacms.io/mediacms/deploy/docker/prestart.sh"
@@ -58,7 +58,7 @@ services:
     restart: unless-stopped
   web:
     platform: linux/amd64
-    image: mediacms/mediacms:latest
+    image: ${MEDIACMS_DEV_IMAGE:-mediacms-dev:latest}
     command: "python manage.py runserver 0.0.0.0:80"
     environment:
       DEVELOPMENT_MODE: True
@@ -93,7 +93,7 @@ services:
       retries: 3
   celery_worker:
     platform: linux/amd64
-    image: mediacms/mediacms:latest
+    image: ${MEDIACMS_DEV_IMAGE:-mediacms-dev:latest}
     deploy:
       replicas: 1
     volumes:

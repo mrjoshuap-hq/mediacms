@@ -1,0 +1,9 @@
+---
+description: Frontend rebuild and i18n reminders
+globs: frontend/**
+alwaysApply: false
+---
+
+Port 80 serves built bundles — run `make frontend-build` after UI changes you need on :80.
+Webpack HMR is on :8088. New user-facing strings: follow `skills/i18n/SKILL.md`
+(`files/frontend_translations/en.py` first, then `process_translations`).

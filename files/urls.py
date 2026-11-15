@@ -1,4 +1,3 @@
-from allauth.account.views import LoginView
 from django.conf import settings
 from django.conf.urls import include
 from django.conf.urls.static import static
@@ -6,6 +5,7 @@ from django.urls import path, re_path
 
 from . import management_views, tinymce_handlers, views
 from .feeds import IndexRSSFeed, SearchRSSFeed
+from .views.auth import MediaCMSLoginView
 
 friendly_token = r"(?P<friendly_token>[\w\-_]*)"
 
@@ -63,6 +63,11 @@ urlpatterns = [
         views.MediaDetail.as_view(),
         name="api_get_media",
     ),
+    re_path(
+        rf"^api/v1/media/{friendly_token}/unlock$",
+        views.MediaPasswordUnlock.as_view(),
+        name="api_media_password_unlock",
+    ),
     re_path(r"^api/v1/search$", views.MediaSearch.as_view()),
     re_path(
         rf"^api/v1/media/{friendly_token}/share$",
@@ -79,6 +84,10 @@ urlpatterns = [
     re_path(
         rf"^api/v1/media/{friendly_token}/trim_video$",
         views.trim_video,
+    ),
+    re_path(
+        rf"^api/v1/media/{friendly_token}/playlists$",
+        views.MediaPlaylistMembership.as_view(),
     ),
     re_path(r"^api/v1/categories$", views.CategoryList.as_view()),
     re_path(r"^api/v1/categories/contributor$", views.CategoryListContributor.as_view()),
@@ -104,6 +113,12 @@ urlpatterns = [
     # ADMIN VIEWS
     re_path(r"^api/v1/encode_profiles/$", views.EncodeProfileList.as_view()),
     re_path(r"^api/v1/manage_media$", management_views.MediaList.as_view()),
+    re_path(r"^api/v1/manage_media/migrate_paths$", management_views.MediaPathMigrateBulk.as_view(), name="api_manage_media_migrate_paths_bulk"),
+    re_path(
+        rf"^api/v1/manage_media/{friendly_token}/migrate_paths$",
+        management_views.MediaPathMigrate.as_view(),
+        name="api_manage_media_migrate_paths",
+    ),
     re_path(r"^api/v1/manage_comments$", management_views.CommentList.as_view()),
     re_path(r"^api/v1/manage_users$", management_views.UserList.as_view()),
     re_path(r"^api/v1/tasks$", views.TasksList.as_view()),
@@ -126,10 +141,10 @@ if hasattr(settings, "USE_SAML") and settings.USE_SAML:
     urlpatterns.append(re_path(r"^saml/metadata", views.saml_metadata, name="saml-metadata"))
 
 if hasattr(settings, "USE_IDENTITY_PROVIDERS") and settings.USE_IDENTITY_PROVIDERS:
-    urlpatterns.append(path('accounts/login_system', LoginView.as_view(), name='login_system'))
-    urlpatterns.append(re_path(r"^accounts/login", views.custom_login_view, name='login'))
+    urlpatterns.append(re_path(r"^accounts/login_system/?$", MediaCMSLoginView.as_view(), name="login_system"))
+    urlpatterns.append(re_path(r"^accounts/login/?$", views.custom_login_view, name="login"))
 else:
-    urlpatterns.append(path('accounts/login', LoginView.as_view(), name='login_system'))
+    urlpatterns.append(re_path(r"^accounts/login/?$", MediaCMSLoginView.as_view(), name="login_system"))
 
 if hasattr(settings, "GENERATE_SITEMAP") and settings.GENERATE_SITEMAP:
     urlpatterns.append(path("sitemap.xml", views.sitemap, name="sitemap"))

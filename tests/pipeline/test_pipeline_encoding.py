@@ -1,14 +1,19 @@
 import contextlib
 import json
 import os
+import time
+from datetime import timedelta
 from unittest import mock
 
+import m3u8
 import pytest
-from django.conf import settings
+from celery.exceptions import Retry
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from files import helpers, tasks
 from files.models import (
@@ -20,6 +25,7 @@ from files.models import (
 )
 from files.tests import create_account, create_media
 from files.tests.media_utils import IMAGE, SMALL_VIDEO
+from tests._support.bento import mp4hls_is_usable
 
 FIXTURES = ["fixtures/categories.json", "fixtures/encoding_profiles.json"]
 
@@ -319,6 +325,126 @@ class VideoChapterDataTest(TestCase):
         self.assertEqual(self.media.chapter_data, [])
 
 
+class EncodingChunkFailCleanupTest(TestCase):
+    fixtures = FIXTURES
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = create_account()
+
+    def setUp(self):
+        self.video = create_media(self.user, SMALL_VIDEO)
+        self.profile = profile("h264-144")
+        self.other_profile = profile("h264-240")
+        source_dir = os.path.dirname(self.video.media_file.path)
+        self.chunk_paths = []
+        for index in range(2):
+            path = os.path.join(source_dir, f"{index:02d}_tokenseg_pipeline.mkv")
+            with open(path, "wb") as handle:
+                handle.write(b"chunk-bytes")
+            self.chunk_paths.append(path)
+        self.chunks_info = json.dumps({path: f"md5{index}" for index, path in enumerate(self.chunk_paths)})
+
+    def tearDown(self):
+        for path in self.chunk_paths:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def _create_chunk_encoding(self, profile_obj, chunk_path, status="pending", logs=""):
+        return Encoding.objects.create(
+            media=self.video,
+            profile=profile_obj,
+            chunk=True,
+            chunk_file_path=chunk_path,
+            chunks_info=self.chunks_info,
+            status=status,
+            logs=logs,
+            worker="localhost",
+        )
+
+    def test_a_failed_chunk_collapses_to_one_fail_encoding_and_removes_source_segments(self):
+        first = self._create_chunk_encoding(self.profile, self.chunk_paths[0], status="running", logs="chunk0 ok-ish")
+        second = self._create_chunk_encoding(self.profile, self.chunk_paths[1], status="running", logs="about to fail")
+
+        second.status = "fail"
+        second.logs = "ffmpeg killed"
+        second.save()
+
+        self.assertFalse(Encoding.objects.filter(media=self.video, profile=self.profile, chunk=True).exists())
+        final = Encoding.objects.get(media=self.video, profile=self.profile, chunk=False)
+        self.assertEqual(final.status, "fail")
+        self.assertIn("ffmpeg killed", final.logs)
+        self.assertFalse(Encoding.objects.filter(pk=first.pk).exists())
+        for path in self.chunk_paths:
+            self.assertFalse(os.path.exists(path))
+
+    def test_source_segments_are_kept_while_another_profile_still_references_them(self):
+        failing = self._create_chunk_encoding(self.profile, self.chunk_paths[0], status="running", logs="boom")
+        self._create_chunk_encoding(self.profile, self.chunk_paths[1], status="pending")
+        self._create_chunk_encoding(self.other_profile, self.chunk_paths[0], status="pending")
+        self._create_chunk_encoding(self.other_profile, self.chunk_paths[1], status="pending")
+
+        failing.status = "fail"
+        failing.logs = "ffmpeg killed"
+        failing.save()
+
+        self.assertFalse(Encoding.objects.filter(media=self.video, profile=self.profile, chunk=True).exists())
+        self.assertEqual(Encoding.objects.filter(media=self.video, profile=self.other_profile, chunk=True).count(), 2)
+        for path in self.chunk_paths:
+            self.assertTrue(os.path.exists(path))
+
+    @override_settings(ENCODING_CHUNKS_RETENTION_HOURS=0)
+    def test_cleanup_task_removes_leftover_chunk_rows_beside_a_terminal_encoding(self):
+        Encoding.objects.create(media=self.video, profile=self.profile, status="fail", progress=100)
+        leftover = self._create_chunk_encoding(self.profile, self.chunk_paths[0], status="pending", logs="stale")
+        other = self._create_chunk_encoding(self.profile, self.chunk_paths[1], status="pending", logs="stale2")
+        # Bypass post_save so we simulate historical leftovers next to a terminal row
+        Encoding.objects.filter(pk__in=[leftover.pk, other.pk]).update(status="fail")
+        old = time.time() - 60
+        for path in self.chunk_paths:
+            os.utime(path, (old, old))
+
+        self.assertTrue(tasks.cleanup_encoding_chunks())
+
+        self.assertFalse(Encoding.objects.filter(pk=leftover.pk).exists())
+        self.assertFalse(Encoding.objects.filter(media=self.video, profile=self.profile, chunk=True).exists())
+        for path in self.chunk_paths:
+            self.assertFalse(os.path.exists(path))
+
+    @override_settings(ENCODING_CHUNKS_RETENTION_HOURS=24)
+    def test_cleanup_task_leaves_in_use_segments_alone(self):
+        self._create_chunk_encoding(self.profile, self.chunk_paths[0], status="running")
+        self._create_chunk_encoding(self.profile, self.chunk_paths[1], status="pending")
+        old = time.time() - 60 * 60 * 48
+        for path in self.chunk_paths:
+            os.utime(path, (old, old))
+
+        self.assertTrue(tasks.cleanup_encoding_chunks())
+
+        self.assertEqual(Encoding.objects.filter(media=self.video, profile=self.profile, chunk=True).count(), 2)
+        for path in self.chunk_paths:
+            self.assertTrue(os.path.exists(path))
+
+    @override_settings(ENCODING_CHUNKS_RETENTION_HOURS=0)
+    def test_cleanup_task_collapses_aged_failed_chunk_groups_without_a_terminal_row(self):
+        first = self._create_chunk_encoding(self.profile, self.chunk_paths[0], status="pending", logs="fail0")
+        second = self._create_chunk_encoding(self.profile, self.chunk_paths[1], status="pending", logs="fail1")
+        aged = timezone.now() - timedelta(hours=48)
+        Encoding.objects.filter(pk__in=[first.pk, second.pk]).update(status="fail", update_date=aged)
+        old = time.time() - 60
+        for path in self.chunk_paths:
+            os.utime(path, (old, old))
+
+        self.assertTrue(tasks.cleanup_encoding_chunks())
+
+        self.assertFalse(Encoding.objects.filter(media=self.video, profile=self.profile, chunk=True).exists())
+        final = Encoding.objects.get(media=self.video, profile=self.profile, chunk=False)
+        self.assertEqual(final.status, "fail")
+        self.assertIn("fail0", final.logs)
+        for path in self.chunk_paths:
+            self.assertFalse(os.path.exists(path))
+
+
 class EncodeMediaGuardsTest(TestCase):
     fixtures = FIXTURES
 
@@ -436,7 +562,10 @@ class EncodeMediaSingleProfileTest(TestCase):
         self.assertAlmostEqual(float(info["video_duration"]), 27.2, delta=0.5)
         self.video.refresh_from_db()
         self.assertEqual(self.video.encoding_status, "success")
-        self.assertTrue(os.path.exists(self.video.hls_file))
+        if mp4hls_is_usable(self.video.media_file.path):
+            self.assertTrue(os.path.exists(self.video.hls_file))
+        else:
+            self.assertFalse(self.video.hls_file)
 
     def test_a_corrupt_source_fails_the_encoding_with_ffmpegs_error(self):
         with open(self.video.media_file.path, "wb") as handle:
@@ -556,12 +685,45 @@ class MediaInitTest(TestCase):
         self.assertFalse(image.produce_thumbnails_from_video())
 
 
+def write_fake_bento_tree(output_dir, resolution, bandwidth=500000, marker=None):
+    """Minimal Bento-like tree so create_hls can install/merge without the binary."""
+    os.makedirs(os.path.join(output_dir, "media-1"), exist_ok=True)
+    with open(os.path.join(output_dir, "media-1", "stream.m3u8"), "w", encoding="utf-8") as handle:
+        handle.write("#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-ENDLIST\n")
+    with open(os.path.join(output_dir, "media-1", "iframes.m3u8"), "w", encoding="utf-8") as handle:
+        handle.write("#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-ENDLIST\n")
+    if marker is not None:
+        with open(os.path.join(output_dir, "media-1", "marker.txt"), "w", encoding="utf-8") as handle:
+            handle.write(marker)
+    width = max(resolution * 16 // 9, 1)
+    with open(os.path.join(output_dir, "master.m3u8"), "w", encoding="utf-8") as handle:
+        handle.write(
+            "#EXTM3U\n"
+            f"#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},RESOLUTION={width}x{resolution}\n"
+            "media-1/stream.m3u8\n"
+            f'#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH={bandwidth // 10},CODECS="avc1.42E01E",'
+            f'RESOLUTION={width}x{resolution},URI="media-1/iframes.m3u8"\n'
+        )
+
+
 class CreateHlsTest(TestCase):
     fixtures = FIXTURES
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.video = create_media(create_account(), SMALL_VIDEO)
+    def setUp(self):
+        # Fresh media per test so encodings/HLS trees do not leak across cases.
+        self.video = create_media(create_account(), SMALL_VIDEO)
+
+    def add_success_encoding(self, profile_name, filename, *, chunk=False, status="success"):
+        with open(self.video.media_file.path, "rb") as handle:
+            encoding = Encoding(media=self.video, profile=profile(profile_name), status=status, chunk=False)
+            encoding.media_file.save(filename, ContentFile(handle.read()), save=False)
+        with mock.patch.object(tasks.create_hls, "delay"):
+            encoding.save()
+        if chunk:
+            # Avoid the chunk-finalize signal (empty chunks_info deletes the row).
+            Encoding.objects.filter(pk=encoding.pk).update(chunk=True)
+            encoding.refresh_from_db()
+        return encoding
 
     def test_without_the_bento4_binary_no_hls_is_made(self):
         with override_settings(MP4HLS_COMMAND="/nonexistent/mp4hls"):
@@ -574,19 +736,170 @@ class CreateHlsTest(TestCase):
         self.assertEqual(self.video.hls_file, "")
         self.assertEqual(self.video.hls_info, {})
 
-    def test_hls_is_rebuilt_in_place_when_it_already_exists(self):
-        with open(self.video.media_file.path, "rb") as handle:
-            encoding = Encoding(media=self.video, profile=profile("h264-240"), status="success")
-            encoding.media_file.save("pipeline_240.mp4", ContentFile(handle.read()), save=False)
-        encoding.save()
-        self.video.refresh_from_db()
-        first = self.video.hls_file
-        self.assertTrue(os.path.exists(first))
+    def test_unknown_encoding_id_is_rejected(self):
+        self.assertFalse(tasks.create_hls(self.video.friendly_token, 999999))
 
-        self.assertTrue(tasks.create_hls(self.video.friendly_token))
+    def test_chunk_encoding_is_not_packaged_incrementally(self):
+        encoding = self.add_success_encoding("h264-240", "chunk_240.mp4", chunk=True)
+        with mock.patch.object(tasks, "_run_mp4hls") as run_mp4hls:
+            self.assertFalse(tasks.create_hls(self.video.friendly_token, encoding.id))
+        run_mp4hls.assert_not_called()
+
+    def test_bento_failure_does_not_install_hls(self):
+        encoding = self.add_success_encoding("h264-240", "fail_240.mp4")
+        with mock.patch.object(tasks, "_run_mp4hls", return_value=False):
+            self.assertFalse(tasks.create_hls(self.video.friendly_token, encoding.id))
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.hls_file, "")
+        self.assertFalse(os.path.isdir(tasks.hls_permanent_dir(self.video.uid)))
+
+    def test_hls_is_rebuilt_in_place_when_it_already_exists(self):
+        encoding = self.add_success_encoding("h264-240", "pipeline_240.mp4")
+
+        def fake_run(media_files, output_dir):
+            write_fake_bento_tree(output_dir, resolution=240)
+            return True
+
+        with mock.patch.object(tasks, "_run_mp4hls", side_effect=fake_run):
+            self.assertTrue(tasks.create_hls(self.video.friendly_token, encoding.id))
+            self.video.refresh_from_db()
+            first = self.video.hls_file
+            self.assertTrue(os.path.exists(first))
+
+            self.assertTrue(tasks.create_hls(self.video.friendly_token))
 
         self.video.refresh_from_db()
         self.assertEqual(self.video.hls_file, first)
         uid = self.video.uid.hex
-        self.assertEqual([name for name in os.listdir(settings.HLS_DIR) if name.startswith(uid)], [uid])
+        shard_dir = os.path.dirname(tasks.hls_permanent_dir(self.video.uid))
+        self.assertEqual([name for name in os.listdir(shard_dir) if name.startswith(uid)], [uid])
+        self.assertIn("240_playlist", self.video.hls_info)
+
+    def test_incremental_hls_passes_only_the_new_encoding_to_bento(self):
+        encoding = self.add_success_encoding("h264-240", "incremental_240.mp4")
+        calls = []
+
+        def fake_run(media_files, output_dir):
+            calls.append(list(media_files))
+            write_fake_bento_tree(output_dir, resolution=240)
+            return True
+
+        with mock.patch.object(tasks, "_run_mp4hls", side_effect=fake_run):
+            self.assertTrue(tasks.create_hls(self.video.friendly_token, encoding.id))
+
+        self.assertEqual(calls, [[encoding.media_file.path]])
+        self.video.refresh_from_db()
+        permanent = tasks.hls_permanent_dir(self.video.uid)
+        self.assertEqual(self.video.hls_file, os.path.join(permanent, "master.m3u8"))
+        self.assertTrue(os.path.isdir(os.path.join(permanent, "media-240")))
+        self.assertIn("240_playlist", self.video.hls_info)
+
+    def test_second_encoding_merges_without_wiping_the_first_variant(self):
+        first = self.add_success_encoding("h264-240", "merge_240.mp4")
+        second = self.add_success_encoding("h264-480", "merge_480.mp4")
+
+        def fake_run(media_files, output_dir):
+            path = media_files[0]
+            resolution = 240 if path == first.media_file.path else 480
+            write_fake_bento_tree(output_dir, resolution=resolution, bandwidth=100000 * resolution)
+            return True
+
+        with mock.patch.object(tasks, "_run_mp4hls", side_effect=fake_run):
+            self.assertTrue(tasks.create_hls(self.video.friendly_token, first.id))
+            self.assertTrue(tasks.create_hls(self.video.friendly_token, second.id))
+
+        permanent = tasks.hls_permanent_dir(self.video.uid)
+        self.assertTrue(os.path.isdir(os.path.join(permanent, "media-240")))
+        self.assertTrue(os.path.isdir(os.path.join(permanent, "media-480")))
+        master = m3u8.load(os.path.join(permanent, "master.m3u8"))
+        self.assertEqual({playlist.uri for playlist in master.playlists}, {"media-240/stream.m3u8", "media-480/stream.m3u8"})
+        self.assertEqual({playlist.uri for playlist in master.iframe_playlists}, {"media-240/iframes.m3u8", "media-480/iframes.m3u8"})
+        self.video.refresh_from_db()
+        self.assertIn("240_playlist", self.video.hls_info)
+        self.assertIn("480_playlist", self.video.hls_info)
+
+    def test_repackaging_the_same_profile_replaces_the_variant(self):
+        encoding = self.add_success_encoding("h264-240", "replace_240.mp4")
+        permanent = tasks.hls_permanent_dir(self.video.uid)
+        marker_path = os.path.join(permanent, "media-240", "marker.txt")
+
+        def fake_run(media_files, output_dir, marker="first", bandwidth=240000):
+            write_fake_bento_tree(output_dir, resolution=240, bandwidth=bandwidth, marker=marker)
+            return True
+
+        with mock.patch.object(tasks, "_run_mp4hls", side_effect=lambda media_files, output_dir: fake_run(media_files, output_dir, "first", 240000)):
+            self.assertTrue(tasks.create_hls(self.video.friendly_token, encoding.id))
+        with open(marker_path, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "first")
+
+        with mock.patch.object(tasks, "_run_mp4hls", side_effect=lambda media_files, output_dir: fake_run(media_files, output_dir, "second", 480000)):
+            self.assertTrue(tasks.create_hls(self.video.friendly_token, encoding.id))
+
+        with open(marker_path, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "second")
+        master = m3u8.load(os.path.join(permanent, "master.m3u8"))
+        media_240 = [playlist for playlist in master.playlists if playlist.uri.startswith("media-240/")]
+        self.assertEqual(len(media_240), 1)
+        self.assertEqual(media_240[0].stream_info.bandwidth, 480000)
+        self.assertEqual(len([playlist for playlist in master.iframe_playlists if playlist.uri.startswith("media-240/")]), 1)
+
+    def test_busy_hls_lock_retries_instead_of_overlapping_install(self):
+        encoding = self.add_success_encoding("h264-240", "lock_240.mp4")
+        lock_key = tasks._hls_lock_key(self.video.uid.hex)
+        cache.set(lock_key, "1", timeout=60)
+
+        def fake_run(media_files, output_dir):
+            write_fake_bento_tree(output_dir, resolution=240)
+            return True
+
+        try:
+            with mock.patch.object(tasks, "_run_mp4hls", side_effect=fake_run):
+                with self.assertRaises(Retry):
+                    tasks.create_hls(self.video.friendly_token, encoding.id)
+        finally:
+            cache.delete(lock_key)
+
+        self.assertFalse(os.path.isdir(tasks.hls_permanent_dir(self.video.uid)))
+
+    def test_full_rebuild_passes_all_successful_encodings_to_bento(self):
+        first = self.add_success_encoding("h264-240", "full_240.mp4")
+        second = self.add_success_encoding("h264-480", "full_480.mp4")
+        calls = []
+
+        def fake_run(media_files, output_dir):
+            calls.append(list(media_files))
+            # Full rebuild keeps Bento's media-1 / media-2 layout.
+            os.makedirs(os.path.join(output_dir, "media-1"), exist_ok=True)
+            os.makedirs(os.path.join(output_dir, "media-2"), exist_ok=True)
+            for name in ("media-1", "media-2"):
+                with open(os.path.join(output_dir, name, "stream.m3u8"), "w", encoding="utf-8") as handle:
+                    handle.write("#EXTM3U\n#EXT-X-ENDLIST\n")
+            with open(os.path.join(output_dir, "master.m3u8"), "w", encoding="utf-8") as handle:
+                handle.write(
+                    "#EXTM3U\n" "#EXT-X-STREAM-INF:BANDWIDTH=240000,RESOLUTION=426x240\n" "media-1/stream.m3u8\n" "#EXT-X-STREAM-INF:BANDWIDTH=480000,RESOLUTION=854x480\n" "media-2/stream.m3u8\n"
+                )
+            return True
+
+        with mock.patch.object(tasks, "_run_mp4hls", side_effect=fake_run):
+            self.assertTrue(tasks.create_hls(self.video.friendly_token))
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(set(calls[0]), {first.media_file.path, second.media_file.path})
+        self.video.refresh_from_db()
+        self.assertTrue(self.video.hls_file.endswith("master.m3u8"))
+        self.assertIn("240_playlist", self.video.hls_info)
+        self.assertIn("480_playlist", self.video.hls_info)
+
+    def test_real_bento_incremental_packages_a_rendition(self):
+        if not mp4hls_is_usable(self.video.media_file.path):
+            self.skipTest("usable mp4hls binary is not available")
+
+        encoding = self.add_success_encoding("h264-240", "bento_240.mp4")
+        self.assertTrue(tasks.create_hls(self.video.friendly_token, encoding.id))
+
+        permanent = tasks.hls_permanent_dir(self.video.uid)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.hls_file, os.path.join(permanent, "master.m3u8"))
+        self.assertTrue(os.path.exists(self.video.hls_file))
+        self.assertTrue(os.path.isdir(os.path.join(permanent, "media-240")))
         self.assertIn("240_playlist", self.video.hls_info)

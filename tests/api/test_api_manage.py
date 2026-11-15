@@ -51,8 +51,14 @@ class ManageApisAccessTest(TestCase):
                     self.assertEqual(client.get(url).status_code, 403)
                     self.assertEqual(client.delete(url).status_code, 403)
 
-    def test_editors_managers_and_admins_can_list_every_manage_api(self):
-        for user in (self.editor, self.manager, self.admin):
+    def test_editors_can_list_media_and_comments_but_not_users(self):
+        client = logged_in(self.editor)
+        self.assertEqual(client.get(MANAGE_MEDIA_URL).status_code, 200)
+        self.assertEqual(client.get(MANAGE_COMMENTS_URL).status_code, 200)
+        self.assertEqual(client.get(MANAGE_USERS_URL).status_code, 403)
+
+    def test_managers_and_admins_can_list_every_manage_api(self):
+        for user in (self.manager, self.admin):
             client = logged_in(user)
             for url in MANAGE_URLS:
                 with self.subTest(url=url, user=user.username):
@@ -207,7 +213,7 @@ class ManageUsersTest(TestCase):
         User.objects.filter(pk=cls.pending.pk).update(is_approved=None)
 
     def usernames(self, params=None, user=None):
-        response = logged_in(user or self.editor).get(MANAGE_USERS_URL, params or {})
+        response = logged_in(user or self.manager).get(MANAGE_USERS_URL, params or {})
         self.assertEqual(response.status_code, 200)
         return [u['username'] for u in response.data['results']]
 
@@ -244,9 +250,11 @@ class ManageUsersTest(TestCase):
     def test_approval_filter_is_ignored_when_approval_is_not_required(self):
         self.assertEqual(len(self.usernames({'is_approved': 'true'})), 4)
 
-    def test_editors_cannot_delete_users(self):
-        response = logged_in(self.editor).delete(f'{MANAGE_USERS_URL}?tokens={self.pending.username}')
-        self.assertEqual(response.status_code, 400)
+    def test_editors_cannot_list_or_delete_users(self):
+        client = logged_in(self.editor)
+        self.assertEqual(client.get(MANAGE_USERS_URL).status_code, 403)
+        response = client.delete(f'{MANAGE_USERS_URL}?tokens={self.pending.username}')
+        self.assertEqual(response.status_code, 403)
         self.assertTrue(User.objects.filter(pk=self.pending.pk).exists())
 
     def test_managers_delete_users_by_username(self):
@@ -254,6 +262,13 @@ class ManageUsersTest(TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(User.objects.filter(pk__in=[self.pending.pk, self.approved.pk]).exists())
         self.assertTrue(User.objects.filter(pk=self.editor.pk).exists())
+
+    def test_managers_cannot_bulk_delete_a_superuser_via_usernames(self):
+        admin = create_account(username=f'ad{uuid.uuid4().hex[:8]}', email=f'{uuid.uuid4().hex[:8]}@example.com', is_superuser=True)
+        response = logged_in(self.manager).delete(f'{MANAGE_USERS_URL}?usernames={self.pending.username},{admin.username}')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['detail'], 'You do not have permission to delete a superuser.')
+        self.assertEqual(User.objects.filter(pk__in=[admin.pk, self.pending.pk]).count(), 2)
 
     def test_managers_cannot_bulk_delete_a_superuser(self):
         admin = create_account(username=f'ad{uuid.uuid4().hex[:8]}', email=f'{uuid.uuid4().hex[:8]}@example.com', is_superuser=True)

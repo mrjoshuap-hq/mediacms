@@ -1,0 +1,9 @@
+---
+description: Prefer fork-docs-release skill for documentation
+globs: docs/**
+alwaysApply: false
+---
+
+When editing documentation, read `skills/fork-docs-release/SKILL.md`.
+Fork what’s-new notes go only in `docs/_shared/fork-whats-new.md`.
+Follow `docs/en/contributing/writing.md`.

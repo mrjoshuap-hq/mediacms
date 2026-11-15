@@ -11,18 +11,37 @@ import subprocess
 from datetime import datetime
 
 from django.conf import settings
+from django.contrib.auth.hashers import check_password, identify_hasher, make_password
 from django.core.cache import cache
 from django.core.files import File
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, get_connection
 from django.db.models import Q
 from django.utils import timezone
 
 from cms import celery_app
+from cms.utils import get_client_ip
 
 from . import helpers, models
 from .helpers import mask_ip
 
 logger = logging.getLogger(__name__)
+
+CELERY_EMAIL_BACKEND = "djcelery_email.backends.CeleryEmailBackend"
+SMTP_EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+PASSWORD_UNLOCKED_SESSION_KEY = "password_unlocked_media"
+
+
+def get_interactive_email_connection():
+    """Return a mail connection that delivers now and surfaces failures.
+
+    Production uses CeleryEmailBackend so most sends enqueue on short_tasks.
+    Interactive flows (contact forms, allauth) need a synchronous backend so
+    callers can report real SMTP success or failure to the user.
+    """
+    backend = settings.EMAIL_BACKEND
+    if backend == CELERY_EMAIL_BACKEND:
+        backend = SMTP_EMAIL_BACKEND
+    return get_connection(backend=backend, fail_silently=False)
 
 
 def get_user_or_session(request):
@@ -39,10 +58,19 @@ def get_user_or_session(request):
         if not request.session.session_key:
             request.session.save()
         ret["user_session"] = request.session.session_key
+
+    # Get client IP address, preferring request.client_ip (set by ProxyAwareMiddleware)
+    # Fall back to get_client_ip utility or REMOTE_ADDR
+    client_ip = getattr(request, 'client_ip', None)
+    if client_ip is None:
+        client_ip = get_client_ip(request)
+    if client_ip is None:
+        client_ip = request.META.get("REMOTE_ADDR")
+
     if settings.MASK_IPS_FOR_ACTIONS:
-        ret["remote_ip_addr"] = mask_ip(request.META.get("REMOTE_ADDR"))
+        ret["remote_ip_addr"] = mask_ip(client_ip)
     else:
-        ret["remote_ip_addr"] = request.META.get("REMOTE_ADDR")
+        ret["remote_ip_addr"] = client_ip
     return ret
 
 
@@ -97,11 +125,248 @@ def is_mediacms_editor(user):
 
     editor = False
     try:
-        if user.is_superuser or user.is_manager or user.is_editor:
+        if user and user.is_authenticated and (user.is_superuser or user.is_manager or user.is_editor):
             editor = True
-    except BaseException:
-        pass
+    except AttributeError as e:
+        logger.warning(
+            "User object missing expected attributes for editor check - user_id=%s, error=%s",
+            getattr(user, 'id', None),
+            str(e),
+        )
+    except Exception:
+        logger.exception(
+            "Unexpected error checking editor status - user_id=%s",
+            getattr(user, 'id', None),
+        )
     return editor
+
+
+def record_moderation_action(user, media, action, extra_info=None):
+    """Create a moderator/server-emitted MediaAction audit event.
+
+    These actions are not creatable through the public save_user_action pipeline.
+    """
+    from actions.models import MODERATION_MEDIA_ACTIONS, MediaAction
+
+    valid = {name for name, _label in MODERATION_MEDIA_ACTIONS}
+    if action not in valid:
+        return None
+
+    actor = user if user is not None and getattr(user, "is_authenticated", False) else None
+    return MediaAction.objects.create(
+        user=actor,
+        media=media,
+        action=action,
+        extra_info=extra_info or "",
+    )
+
+
+def clear_media_reports(media_qs, user=None):
+    """Delete report MediaAction rows, reset reported_times, and log report_cleared.
+
+    Returns the number of media items processed.
+    """
+    from actions.models import MediaAction
+
+    media_ids = list(media_qs.values_list("pk", flat=True))
+    if not media_ids:
+        return 0
+
+    processed = 0
+    for media in models.Media.objects.filter(pk__in=media_ids):
+        reports = MediaAction.objects.filter(media=media, action="report")
+        report_count = reports.count()
+        reasons = [reason for reason in reports.exclude(extra_info__isnull=True).exclude(extra_info="").values_list("extra_info", flat=True)[:5]]
+        had_reports = report_count > 0 or media.reported_times > 0
+        reports.delete()
+        if media.reported_times != 0:
+            media.reported_times = 0
+            media.save(update_fields=["reported_times"])
+        if had_reports:
+            summary = f"cleared {report_count} report(s)"
+            if reasons:
+                joined = "; ".join(str(r)[:80] for r in reasons)
+                summary = f"{summary}: {joined}"[:500]
+            record_moderation_action(user, media, "report_cleared", extra_info=summary)
+        processed += 1
+    return processed
+
+
+def confirm_media_reports(media_qs, user=None):
+    """Set media private in response to reports and log report_confirmed.
+
+    Reports and reported_times are left in place. Returns the number of media items updated.
+    """
+    count = 0
+    for media in media_qs:
+        media.state = "private"
+        media.save()
+        record_moderation_action(
+            user,
+            media,
+            "report_confirmed",
+            extra_info=f"set private; reported_times={media.reported_times}",
+        )
+        count += 1
+    return count
+
+
+def set_media_reviewed(media, is_reviewed, user=None):
+    """Set media.is_reviewed and log media_reviewed / media_unreviewed when it changes.
+
+    Returns True when the reviewed flag changed.
+    """
+    new_value = bool(is_reviewed)
+    if media.is_reviewed is new_value:
+        return False
+    media.is_reviewed = new_value
+    media.save()
+    record_moderation_action(
+        user,
+        media,
+        "media_reviewed" if new_value else "media_unreviewed",
+    )
+    return True
+
+
+def _original_media_file_path(media):
+    """Return the on-disk path for media.media_file, or None."""
+    try:
+        if not media.media_file:
+            return None
+        return media.media_file.path
+    except (ValueError, NotImplementedError, OSError):
+        return None
+
+
+def _encoding_rows_for_original_delete_gate(media):
+    """Non-chunk mp4/webm encodings excluding preview — same set as encoding_status."""
+    from .models.utils import PREVIEW_PROFILE_NAME
+
+    return media.encodings.filter(chunk=False).filter(Q(profile__extension="mp4") | Q(profile__extension="webm")).exclude(profile__name=PREVIEW_PROFILE_NAME)
+
+
+def can_delete_original_media_file(media):
+    """Whether the original upload may be deleted while keeping encodings.
+
+    Returns (eligible: bool, reason: str). reason is empty when eligible.
+    """
+    if media.media_type not in ("video", "audio"):
+        return False, "only video/audio with encodings can delete the original"
+
+    path = _original_media_file_path(media)
+    if not path or not os.path.isfile(path):
+        return False, "original file missing on disk"
+
+    if media.encoding_status != "success":
+        return False, f"encoding status is {media.encoding_status or 'unknown'}, not success"
+
+    encodings = _encoding_rows_for_original_delete_gate(media)
+    if not encodings.filter(status="success").exists():
+        return False, "no successful encodings found"
+
+    incomplete = encodings.filter(status__in=["pending", "running", "fail"])
+    if incomplete.exists():
+        statuses = sorted(set(incomplete.values_list("status", flat=True)))
+        return False, f"encodings still incomplete or failed ({', '.join(statuses)})"
+
+    return True, ""
+
+
+def delete_original_media_file(media, user=None):
+    """Delete the original upload from disk if eligible; keep Media/encodings.
+
+    Does not clear the FileField (required field). Logs original_deleted.
+    Returns (deleted: bool, reason: str).
+    """
+    eligible, reason = can_delete_original_media_file(media)
+    if not eligible:
+        return False, reason
+
+    path = _original_media_file_path(media)
+    filename = helpers.get_file_name(path) if path else ""
+    if not helpers.rm_file(path):
+        return False, "original file missing on disk"
+
+    summary = f"deleted original file: {filename}"[:500]
+    record_moderation_action(user, media, "original_deleted", extra_info=summary)
+    return True, ""
+
+
+def media_has_original_file(media):
+    """True when the original media_file exists on disk."""
+    path = _original_media_file_path(media)
+    return bool(path and os.path.isfile(path))
+
+
+def media_requires_password(media):
+    """Whether media has password protection enabled."""
+    return bool(getattr(media, "password", None))
+
+
+def user_bypasses_media_password(user, media):
+    """Owners, editors, and users with member access skip the password gate."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if user == media.user or is_mediacms_editor(user):
+        return True
+    return user.has_member_access_to_media(media)
+
+
+def media_password_unlocked(request, media):
+    """Whether the requester may view password-protected media."""
+    if not media_requires_password(media):
+        return True
+    if user_bypasses_media_password(request.user, media):
+        return True
+    unlocked = request.session.get(PASSWORD_UNLOCKED_SESSION_KEY, [])
+    return media.friendly_token in unlocked
+
+
+def verify_media_password(media, raw_password):
+    """Check a submitted password against the stored Media.password value."""
+    if not media.password:
+        return True
+    if not raw_password:
+        return False
+    try:
+        identify_hasher(media.password)
+    except ValueError:
+        # Legacy plaintext values written before hashing was added.
+        return media.password == raw_password
+    return check_password(raw_password, media.password)
+
+
+def set_media_password(media, raw_password):
+    """Store a hashed media password, or clear protection when empty."""
+    if raw_password:
+        media.password = make_password(raw_password)
+    else:
+        media.password = ""
+    # Drop auth cache so password enable/disable takes effect immediately.
+    if getattr(media, "uid", None):
+        cache.delete(f"xaccel:state:{media.uid.hex}")
+
+
+def unlock_media_password(request, media, raw_password):
+    """Validate password and mark media unlocked in the session."""
+    if not verify_media_password(media, raw_password):
+        logger.info(
+            "Media password unlock failed - friendly_token=%s",
+            getattr(media, "friendly_token", None),
+        )
+        return False
+    if not request.session.session_key:
+        request.session.save()
+    unlocked = set(request.session.get(PASSWORD_UNLOCKED_SESSION_KEY, []))
+    unlocked.add(media.friendly_token)
+    request.session[PASSWORD_UNLOCKED_SESSION_KEY] = list(unlocked)
+    request.session.modified = True
+    logger.info(
+        "Media password unlocked - friendly_token=%s",
+        getattr(media, "friendly_token", None),
+    )
+    return True
 
 
 def can_edit_category(user, category):
@@ -128,10 +393,19 @@ def is_mediacms_manager(user):
 
     manager = False
     try:
-        if user.is_superuser or user.is_manager:
+        if user and user.is_authenticated and (user.is_superuser or user.is_manager):
             manager = True
-    except BaseException:
-        pass
+    except AttributeError as e:
+        logger.warning(
+            "User object missing expected attributes for manager check - user_id=%s, error=%s",
+            getattr(user, 'id', None),
+            str(e),
+        )
+    except Exception:
+        logger.exception(
+            "Unexpected error checking manager status - user_id=%s",
+            getattr(user, 'id', None),
+        )
     return manager
 
 
@@ -140,24 +414,59 @@ def get_next_state(user, current_state, next_state):
     and the user object.
     Users may themselves perform only allowed transitions
     """
+    original_next_state = next_state
 
     if next_state not in ["public", "private", "unlisted"]:
         next_state = settings.PORTAL_WORKFLOW  # get default state
+        logger.debug(
+            "Invalid state provided, using default - user_id=%s, provided_state=%s, default_state=%s",
+            getattr(user, 'id', None),
+            original_next_state,
+            next_state,
+        )
 
     if is_mediacms_editor(user):
         # allow any transition
+        if current_state != next_state:
+            logger.info(
+                "State transition allowed (editor) - user_id=%s, current_state=%s, next_state=%s",
+                getattr(user, 'id', None),
+                current_state,
+                next_state,
+            )
         return next_state
 
-    if settings.PORTAL_WORKFLOW == "private":
+    if settings.PORTAL_WORKFLOW in ("private", "private_verified"):
         if next_state in ["private", "unlisted"]:
             next_state = next_state
         else:
             next_state = current_state
+            logger.debug(
+                "State transition blocked by workflow - user_id=%s, current_state=%s, requested_state=%s, workflow=%s",
+                getattr(user, 'id', None),
+                current_state,
+                original_next_state,
+                settings.PORTAL_WORKFLOW,
+            )
 
     if settings.PORTAL_WORKFLOW == "unlisted":
         # don't allow to make media public in this case
         if next_state == "public":
             next_state = current_state
+            logger.debug(
+                "State transition blocked by workflow - user_id=%s, current_state=%s, requested_state=%s, workflow=unlisted",
+                getattr(user, 'id', None),
+                current_state,
+                original_next_state,
+            )
+
+    if current_state != next_state:
+        logger.info(
+            "State transition - user_id=%s, current_state=%s, next_state=%s",
+            getattr(user, 'id', None),
+            current_state,
+            next_state,
+        )
 
     return next_state
 
@@ -165,11 +474,21 @@ def get_next_state(user, current_state, next_state):
 def notify_users(friendly_token=None, action=None, extra=None):
     """Notify users through email, for a set of actions"""
 
+    logger.debug(
+        "Notification requested - friendly_token=%s, action=%s",
+        friendly_token,
+        action,
+    )
     notify_items = []
     media = None
     if friendly_token:
         media = models.Media.objects.filter(friendly_token=friendly_token).first()
         if not media:
+            logger.warning(
+                "Media not found for notification - friendly_token=%s, action=%s",
+                friendly_token,
+                action,
+            )
             return False
         media_url = settings.SSL_FRONTEND_HOST + media.get_absolute_url()
 
@@ -230,8 +549,22 @@ URL: %s
             notify_items.append(d)
 
     for item in notify_items:
-        email = EmailMessage(item["title"], item["msg"], settings.DEFAULT_FROM_EMAIL, item["to"])
-        email.send(fail_silently=True)
+        try:
+            email = EmailMessage(item["title"], item["msg"], settings.DEFAULT_FROM_EMAIL, item["to"])
+            email.send(fail_silently=True)
+            logger.info(
+                "Notification email sent - action=%s, friendly_token=%s, recipients=%s",
+                action,
+                friendly_token,
+                len(item["to"]),
+            )
+        except Exception:
+            logger.exception(
+                "Error sending notification email - action=%s, friendly_token=%s, recipients=%s",
+                action,
+                friendly_token,
+                item["to"],
+            )
     return True
 
 
@@ -311,7 +644,11 @@ def show_related_media_content(media, request, limit):
     try:
         m.remove(media)  # remove media from results
     except ValueError:
-        pass
+        # Media not in results, which is fine
+        logger.debug(
+            "Media not found in related media results (expected) - friendly_token=%s",
+            media.friendly_token if media else None,
+        )
 
     random.shuffle(m)
     return m
@@ -332,7 +669,11 @@ def show_related_media_author(media, request, limit):
     try:
         m.remove(media)  # remove media from results
     except ValueError:
-        pass
+        # Media not in results, which is fine
+        logger.debug(
+            "Media not found in related media results (expected) - friendly_token=%s",
+            media.friendly_token if media else None,
+        )
 
     random.shuffle(m)
     return m
@@ -430,12 +771,25 @@ def clean_comment(raw_comment):
     return cleaned_comment
 
 
+def user_is_pending_approval(user):
+    """True when this signed-in user may browse but may not change the library."""
+    if not getattr(settings, "USERS_NEEDS_TO_BE_APPROVED", False):
+        return False
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return False
+    return not getattr(user, "is_approved", False)
+
+
 def user_allowed_to_upload(request):
     """Any custom logic for whether a user is allowed
     to upload content lives here
     """
 
     if request.user.is_anonymous:
+        return False
+    if user_is_pending_approval(request.user):
         return False
     if is_mediacms_editor(request.user):
         return True
@@ -478,17 +832,23 @@ def kill_ffmpeg_process(filepath):
         bool: True if the lookup ran, False if input was unusable
     """
     if not filepath or not isinstance(filepath, str):
+        logger.debug("kill_ffmpeg_process called with empty filepath")
         return False
     try:
         ps = subprocess.run(["ps", "aux"], stdout=subprocess.PIPE, check=False)
     except OSError:
         return False
+    killed = False
     for line in ps.stdout.decode("utf-8", "replace").splitlines():
         if "ffmpeg" not in line or filepath not in line or "grep" in line:
             continue
         parts = line.split()
         if len(parts) > 1 and parts[1].isdigit():
+            logger.info("Killing FFmpeg process - filepath=%s, pid=%s", filepath, parts[1])
             subprocess.run(["kill", "-9", parts[1]], check=False)
+            killed = True
+    if not killed:
+        logger.debug("No FFmpeg process found for filepath - filepath=%s", filepath)
     return True
 
 
@@ -502,92 +862,122 @@ def copy_video(original_media, copy_encodings=True, title_suffix="(Trimmed)"):
     Returns:
         New Media object
     """
+    logger.info(
+        "Starting video copy - original_friendly_token=%s, copy_encodings=%s, title_suffix=%s",
+        original_media.friendly_token,
+        copy_encodings,
+        title_suffix,
+    )
 
     while True:
         friendly_token = helpers.produce_friendly_token()
         if not models.Media.objects.filter(friendly_token=friendly_token).exists():
             break
 
-    with open(original_media.media_file.path, "rb") as f:
-        myfile = File(f)
-        new_media = models.Media(
-            media_file=myfile,
-            friendly_token=friendly_token,
-            title=f"{original_media.title} {title_suffix}",
-            description=original_media.description,
-            user=original_media.user,
-            media_type=original_media.media_type,
-            enable_comments=original_media.enable_comments,
-            allow_download=original_media.allow_download,
-            state=helpers.get_default_state(user=original_media.user),
-            is_reviewed=original_media.is_reviewed,
-            encoding_status=original_media.encoding_status,
-            add_date=timezone.now(),
-            video_height=original_media.video_height,
-            size=original_media.size,
-            duration=original_media.duration,
-            media_info=original_media.media_info,
-        )
-        models.Media.objects.bulk_create([new_media])
+    try:
+        with open(original_media.media_file.path, "rb") as f:
+            myfile = File(f)
+            new_media = models.Media(
+                media_file=myfile,
+                friendly_token=friendly_token,
+                title=f"{original_media.title} {title_suffix}",
+                description=original_media.description,
+                user=original_media.user,
+                media_type=original_media.media_type,
+                enable_comments=original_media.enable_comments,
+                allow_download=original_media.allow_download,
+                state=helpers.get_default_state(user=original_media.user),
+                is_reviewed=original_media.is_reviewed,
+                encoding_status=original_media.encoding_status,
+                add_date=timezone.now(),
+                video_height=original_media.video_height,
+                size=original_media.size,
+                duration=original_media.duration,
+                media_info=original_media.media_info,
+            )
+            models.Media.objects.bulk_create([new_media])
         # avoids calling signals since signals will call media_init and we don't want that
+        logger.debug(
+            "Media copy created - original_friendly_token=%s, new_friendly_token=%s",
+            original_media.friendly_token,
+            friendly_token,
+        )
 
-    if copy_encodings:
-        for encoding in original_media.encodings.filter(chunk=False, status="success"):
-            if encoding.media_file:
-                with open(encoding.media_file.path, "rb") as f:
-                    myfile = File(f)
-                    new_encoding = models.Encoding(
-                        media_file=myfile, media=new_media, profile=encoding.profile, size=encoding.size, status="success", progress=100, chunk=False, logs=f"Copied from encoding {encoding.id}"
-                    )
-                    models.Encoding.objects.bulk_create([new_encoding])
-                    # avoids calling signals as this is still not ready
+        if copy_encodings:
+            for encoding in original_media.encodings.filter(chunk=False, status="success"):
+                if encoding.media_file:
+                    with open(encoding.media_file.path, "rb") as f:
+                        myfile = File(f)
+                        new_encoding = models.Encoding(
+                            media_file=myfile, media=new_media, profile=encoding.profile, size=encoding.size, status="success", progress=100, chunk=False, logs=f"Copied from encoding {encoding.id}"
+                        )
+                        models.Encoding.objects.bulk_create([new_encoding])
+                        # avoids calling signals as this is still not ready
 
-    # Copy categories and tags
-    for category in original_media.category.all():
-        new_media.category.add(category)
+        # Copy categories and tags
+        for category in original_media.category.all():
+            new_media.category.add(category)
 
-    for tag in original_media.tags.all():
-        new_media.tags.add(tag)
+        for tag in original_media.tags.all():
+            new_media.tags.add(tag)
 
-    if original_media.thumbnail:
-        with open(original_media.thumbnail.path, 'rb') as f:
-            thumbnail_name = helpers.get_file_name(original_media.thumbnail.path)
-            new_media.thumbnail.save(thumbnail_name, File(f))
+        if original_media.thumbnail:
+            with open(original_media.thumbnail.path, 'rb') as f:
+                thumbnail_name = helpers.get_file_name(original_media.thumbnail.path)
+                new_media.thumbnail.save(thumbnail_name, File(f))
 
-    if original_media.poster:
-        with open(original_media.poster.path, 'rb') as f:
-            poster_name = helpers.get_file_name(original_media.poster.path)
-            new_media.poster.save(poster_name, File(f))
+        if original_media.poster:
+            with open(original_media.poster.path, 'rb') as f:
+                poster_name = helpers.get_file_name(original_media.poster.path)
+                new_media.poster.save(poster_name, File(f))
 
-    if original_media.uploaded_thumbnail:
-        with open(original_media.uploaded_thumbnail.path, 'rb') as f:
-            thumbnail_name = helpers.get_file_name(original_media.uploaded_thumbnail.path)
-            new_media.uploaded_thumbnail.save(thumbnail_name, File(f))
+        if original_media.uploaded_thumbnail:
+            with open(original_media.uploaded_thumbnail.path, 'rb') as f:
+                thumbnail_name = helpers.get_file_name(original_media.uploaded_thumbnail.path)
+                new_media.uploaded_thumbnail.save(thumbnail_name, File(f))
 
-    if original_media.uploaded_poster:
-        with open(original_media.uploaded_poster.path, 'rb') as f:
-            poster_name = helpers.get_file_name(original_media.uploaded_poster.path)
-            new_media.uploaded_poster.save(poster_name, File(f))
+        if original_media.uploaded_poster:
+            with open(original_media.uploaded_poster.path, 'rb') as f:
+                poster_name = helpers.get_file_name(original_media.uploaded_poster.path)
+                new_media.uploaded_poster.save(poster_name, File(f))
 
-    if original_media.sprites:
-        with open(original_media.sprites.path, 'rb') as f:
-            sprites_name = helpers.get_file_name(original_media.sprites.path)
-            new_media.sprites.save(sprites_name, File(f))
+        if original_media.sprites:
+            with open(original_media.sprites.path, 'rb') as f:
+                sprites_name = helpers.get_file_name(original_media.sprites.path)
+                new_media.sprites.save(sprites_name, File(f))
 
-    if original_media.hls_file and os.path.exists(original_media.hls_file):
-        p = os.path.dirname(original_media.hls_file)
-        if os.path.exists(p):
-            new_hls_file = original_media.hls_file.replace(original_media.uid.hex, new_media.uid.hex)
-            models.Media.objects.filter(id=new_media.id).update(hls_file=new_hls_file)
-            new_p = p.replace(original_media.uid.hex, new_media.uid.hex)
+        if original_media.hls_file and os.path.exists(original_media.hls_file):
+            p = os.path.dirname(original_media.hls_file)
+            if os.path.exists(p):
+                # the copy gets its own sharded tree (a plain uid replace would keep the
+                # original's shard directories)
+                new_p = os.path.join(settings.HLS_DIR, models.media_uid_shard_path(new_media.uid))
+                new_hls_file = os.path.join(new_p, os.path.relpath(original_media.hls_file, p))
+                models.Media.objects.filter(id=new_media.id).update(hls_file=new_hls_file)
 
-            if not os.path.exists(new_p):
-                os.makedirs(new_p, exist_ok=True)
-            # Copy the contents of the HLS directory into new_p without invoking a
-            # shell (equivalent to `cp -r {p}/* {new_p}/`); avoids shell interpretation
-            # of the paths entirely.
-            shutil.copytree(p, new_p, dirs_exist_ok=True)
+                if not os.path.exists(new_p):
+                    os.makedirs(new_p, exist_ok=True)
+                # Copy the contents of the HLS directory into new_p without invoking a
+                # shell (equivalent to `cp -r {p}/* {new_p}/`); avoids shell interpretation
+                # of the paths entirely.
+                shutil.copytree(p, new_p, dirs_exist_ok=True)
+                logger.debug(
+                    "HLS files copied - original_friendly_token=%s, new_friendly_token=%s",
+                    original_media.friendly_token,
+                    friendly_token,
+                )
 
+        logger.info(
+            "Video copy completed - original_friendly_token=%s, new_friendly_token=%s",
+            original_media.friendly_token,
+            friendly_token,
+        )
+    except Exception:
+        logger.exception(
+            "Error copying video - original_friendly_token=%s",
+            original_media.friendly_token,
+        )
+        raise
     return new_media
 
 

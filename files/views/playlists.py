@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Count, OuterRef, Q, Subquery
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import permissions, status
@@ -14,17 +14,33 @@ from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
-from cms.permissions import IsAuthorizedToAdd, IsUserOrEditor
+from cms.permissions import IsAuthorizedToCreatePlaylist, IsUserOrEditor
 
-from ..methods import is_mediacms_editor
+from ..methods import is_mediacms_editor, user_is_pending_approval
 from ..models import Media, Playlist, PlaylistMedia
 from ..serializers import MediaSerializer, PlaylistDetailSerializer, PlaylistSerializer
+
+
+def _pending_library_block(user):
+    if user_is_pending_approval(user):
+        return Response({"detail": "User account not approved."}, status=status.HTTP_403_FORBIDDEN)
+    return None
+
+
+def playlist_media_accessible_q(user):
+    """Visibility filter for playlist media, matching PlaylistDetail.get."""
+    accessible = Q(media__state__in=["public", "unlisted"])
+    if user and getattr(user, "is_authenticated", False):
+        accessible |= Q(media__user=user) | Q(media__permissions__user=user)
+        if getattr(settings, "USE_RBAC", False):
+            accessible |= Q(media__category__in=user.get_rbac_categories_as_member())
+    return accessible
 
 
 class PlaylistList(APIView):
     """Playlists listings and creation views"""
 
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly, IsAuthorizedToAdd)
+    permission_classes = (permissions.IsAuthenticatedOrReadOnly, IsAuthorizedToCreatePlaylist)
     parser_classes = (JSONParser, MultiPartParser, FormParser, FileUploadParser)
 
     @swagger_auto_schema(
@@ -39,7 +55,23 @@ class PlaylistList(APIView):
     def get(self, request, format=None):
         pagination_class = api_settings.DEFAULT_PAGINATION_CLASS
         paginator = pagination_class()
-        playlists = Playlist.objects.filter().prefetch_related("user")
+        # Count/thumbnail use the same visibility rules as opening a playlist.
+        if is_mediacms_editor(request.user):
+            media_count = Count("media", distinct=True)
+            thumbnail_qs = PlaylistMedia.objects.filter(playlist_id=OuterRef("pk"))
+        else:
+            accessible = playlist_media_accessible_q(request.user)
+            media_count = Count("media", filter=accessible, distinct=True)
+            thumbnail_qs = PlaylistMedia.objects.filter(playlist_id=OuterRef("pk")).filter(accessible)
+        first_thumbnail = thumbnail_qs.exclude(media__thumbnail="").order_by("ordering", "-action_date").values("media__thumbnail")[:1]
+        playlists = (
+            Playlist.objects.select_related("user")
+            .annotate(
+                annotated_media_count=media_count,
+                annotated_thumbnail=Subquery(first_thumbnail),
+            )
+            .order_by("-add_date")
+        )
 
         if "author" in self.request.query_params:
             author = self.request.query_params["author"].strip()
@@ -57,6 +89,9 @@ class PlaylistList(APIView):
         operation_description='Create a playlist owned by the authenticated user. The friendly token is assigned by the server.',
     )
     def post(self, request, format=None):
+        blocked = _pending_library_block(request.user)
+        if blocked:
+            return blocked
         serializer = PlaylistSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             serializer.save(user=request.user)
@@ -100,14 +135,10 @@ class PlaylistDetail(APIView):
         if is_mediacms_editor(request.user):
             playlist_media = base_qs
         else:
-            accessible = Q(media__state__in=["public", "unlisted"])
-            if request.user.is_authenticated:
-                accessible |= Q(media__user=request.user) | Q(media__permissions__user=request.user)
-                if getattr(settings, 'USE_RBAC', False):
-                    accessible |= Q(media__category__in=request.user.get_rbac_categories_as_member())
-            playlist_media = base_qs.filter(accessible)
+            playlist_media = base_qs.filter(playlist_media_accessible_q(request.user))
 
-        playlist_media = playlist_media.prefetch_related("media__user").select_related("media").distinct()
+        # Keep PlaylistMedia.ordering after permission joins + distinct().
+        playlist_media = playlist_media.prefetch_related("media__user").select_related("media").order_by("ordering", "-action_date").distinct()
 
         playlist_media = [c.media for c in playlist_media]
 
@@ -124,6 +155,9 @@ class PlaylistDetail(APIView):
         operation_description='Update the title and description of a playlist. Allowed for its owner and MediaCMS editors, managers and admins; the owner stays the same.',
     )
     def post(self, request, friendly_token, format=None):
+        blocked = _pending_library_block(request.user)
+        if blocked:
+            return blocked
         playlist = self.get_playlist(friendly_token)
         if isinstance(playlist, Response):
             return playlist
@@ -140,6 +174,9 @@ class PlaylistDetail(APIView):
         operation_description='type is one of add, remove or ordering, with media_friendly_token set to the media. ordering also needs the new position. Private media can only be added by users who can see them.',
     )
     def put(self, request, friendly_token, format=None):
+        blocked = _pending_library_block(request.user)
+        if blocked:
+            return blocked
         playlist = self.get_playlist(friendly_token)
         if isinstance(playlist, Response):
             return playlist
@@ -202,6 +239,9 @@ class PlaylistDetail(APIView):
         operation_description='Delete a playlist. Allowed for its owner and MediaCMS editors, managers and admins.',
     )
     def delete(self, request, friendly_token, format=None):
+        blocked = _pending_library_block(request.user)
+        if blocked:
+            return blocked
         playlist = self.get_playlist(friendly_token)
         if isinstance(playlist, Response):
             return playlist

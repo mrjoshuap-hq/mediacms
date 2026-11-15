@@ -1,4 +1,5 @@
 import uuid
+from unittest import mock
 
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -37,6 +38,12 @@ class UserListApiTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue({self.alice.username, self.bob.username} <= usernames(response))
 
+    @override_settings(CAN_SEE_MEMBERS_PAGE="anonymous")
+    def test_anonymous_can_list_users_when_members_page_is_anonymous(self):
+        response = self.client.get("/api/v1/users")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue({self.alice.username, self.bob.username} <= usernames(response))
+
     def test_listing_exposes_profile_urls_but_not_emails(self):
         entry = next(u for u in self.client.get("/api/v1/users").json()["results"] if u["username"] == self.alice.username)
         self.assertTrue(entry["url"].endswith(f"/user/{self.alice.username}/"))
@@ -45,6 +52,10 @@ class UserListApiTest(TestCase):
 
     @override_settings(ALLOW_ANONYMOUS_USER_LISTING=False)
     def test_anonymous_cannot_list_users_when_anonymous_listing_is_disabled(self):
+        self.assertEqual(self.client.get("/api/v1/users").status_code, 403)
+
+    @override_settings(CAN_SEE_MEMBERS_PAGE="anonymous", ALLOW_ANONYMOUS_USER_LISTING=False)
+    def test_anonymous_cannot_list_users_when_members_anonymous_but_listing_disabled(self):
         self.assertEqual(self.client.get("/api/v1/users").status_code, 403)
 
     @override_settings(ALLOW_ANONYMOUS_USER_LISTING=False)
@@ -399,6 +410,15 @@ class ContactUserApiTest(TestCase):
     def test_contacting_an_unknown_user_sends_nothing(self):
         self.client.force_authenticate(self.sender)
         self.assertEqual(self.contact(User(username="nobody_here_at_all")).status_code, 204)
+        self.assertEqual(mail.outbox, [])
+
+    def test_send_failure_returns_bad_gateway(self):
+        self.client.force_authenticate(self.sender)
+        with mock.patch("users.views.EmailMessage") as email_cls:
+            email_cls.return_value.send.side_effect = OSError("smtp down")
+            response = self.contact(self.open_user, "Nice video!")
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["detail"], "Message could not be sent. Please try again later.")
         self.assertEqual(mail.outbox, [])
 
 

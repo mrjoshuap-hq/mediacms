@@ -1,9 +1,22 @@
 from django.conf import settings
 
+from cms.permissions import user_allowed_to_comment
 from cms.version import VERSION
 
 from .frontend_translations import get_translation, get_translation_strings
-from .methods import is_mediacms_editor, is_mediacms_manager
+from .methods import (
+    is_mediacms_editor,
+    is_mediacms_manager,
+    user_allowed_to_upload,
+    user_is_pending_approval,
+)
+from .models import Page
+from .page_slugs import HTML_SECTIONS, INJECT_SLUGS, LINK_SECTIONS, parse_page_slug
+
+try:
+    from django.contrib.sites.shortcuts import get_current_site
+except ImportError:
+    get_current_site = None
 
 
 def stuff(request):
@@ -12,6 +25,32 @@ def stuff(request):
     ret["FRONTEND_HOST"] = request.build_absolute_uri('/').rstrip('/')
     ret["DEFAULT_THEME"] = settings.DEFAULT_THEME
     ret["PORTAL_NAME"] = settings.PORTAL_NAME
+    groups = {section: [] for section in LINK_SECTIONS}
+    html_slots = {section: [] for section in HTML_SECTIONS}
+    fragments = {slug.replace("-", "_"): "" for slug in INJECT_SLUGS}
+    for page in Page.objects.order_by("title").only("slug", "title", "description"):
+        parsed = parse_page_slug(page.slug)
+        if parsed.kind == "link":
+            groups[parsed.section].append(page)
+        elif parsed.kind == "html":
+            html_slots[parsed.section].append(page.description or "")
+        elif parsed.kind == "inject":
+            fragments[page.slug.replace("-", "_")] = page.description or ""
+    if not request.user.is_authenticated:
+        groups["library"] = []
+        groups["personal"] = []
+    user_is_pending = user_is_pending_approval(request.user)
+    if not (request.user.is_authenticated and is_mediacms_editor(request.user) and not user_is_pending):
+        groups["manage"] = []
+    ret["SIDEBAR_BROWSE"] = groups["browse"]
+    ret["SIDEBAR_LIBRARY"] = groups["library"]
+    ret["SIDEBAR_PERSONAL"] = groups["personal"]
+    ret["SIDEBAR_INFO"] = groups["info"]
+    ret["SIDEBAR_MANAGE"] = groups["manage"]
+    ret["SIDEBAR_BELOW"] = "".join(html_slots["below"])
+    ret["SIDEBAR_AFTER_THEME"] = "".join(html_slots["after-theme"])
+    ret["SIDEBAR_FOOTER_HTML"] = "".join(html_slots["footer"])
+    ret["PAGE_FRAGMENTS"] = fragments
 
     ret["PORTAL_LOGO_DARK_SVG"] = getattr(settings, 'PORTAL_LOGO_DARK_SVG', "")
     ret["PORTAL_LOGO_DARK_PNG"] = getattr(settings, 'PORTAL_LOGO_DARK_PNG', "")
@@ -22,7 +61,8 @@ def stuff(request):
     ret["LOAD_FROM_CDN"] = settings.LOAD_FROM_CDN
     ret["CAN_LOGIN"] = settings.LOGIN_ALLOWED
     ret["CAN_REGISTER"] = settings.REGISTER_ALLOWED
-    ret["CAN_UPLOAD_MEDIA"] = settings.UPLOAD_MEDIA_ALLOWED
+    ret["CAN_UPLOAD_MEDIA"] = bool(settings.UPLOAD_MEDIA_ALLOWED) and user_allowed_to_upload(request)
+    ret["CAN_ADD_COMMENT"] = user_allowed_to_comment(request)
     ret["TIMESTAMP_IN_TIMEBAR"] = settings.TIMESTAMP_IN_TIMEBAR
     ret["CAN_MENTION_IN_COMMENTS"] = settings.ALLOW_MENTION_IN_COMMENTS
     ret["CAN_LIKE_MEDIA"] = settings.CAN_LIKE_MEDIA
@@ -35,12 +75,15 @@ def stuff(request):
     ret["SIDEBAR_FOOTER_TEXT"] = settings.SIDEBAR_FOOTER_TEXT
     ret["POST_UPLOAD_AUTHOR_MESSAGE_UNLISTED_NO_COMMENTARY"] = settings.POST_UPLOAD_AUTHOR_MESSAGE_UNLISTED_NO_COMMENTARY
     ret["IS_MEDIACMS_ADMIN"] = request.user.is_superuser
-    ret["IS_MEDIACMS_EDITOR"] = is_mediacms_editor(request.user)
-    ret["IS_MEDIACMS_MANAGER"] = is_mediacms_manager(request.user)
+    ret["IS_MEDIACMS_EDITOR"] = is_mediacms_editor(request.user) and not user_is_pending
+    ret["IS_MEDIACMS_MANAGER"] = is_mediacms_manager(request.user) and not user_is_pending
+    ret["USER_IS_PENDING"] = user_is_pending
     ret["USERS_NEEDS_TO_BE_APPROVED"] = settings.USERS_NEEDS_TO_BE_APPROVED
 
     can_see_members_page = False
-    if request.user.is_authenticated:
+    if settings.CAN_SEE_MEMBERS_PAGE == "anonymous":
+        can_see_members_page = True
+    elif request.user.is_authenticated:
         if settings.CAN_SEE_MEMBERS_PAGE == "all":
             can_see_members_page = True
         elif settings.CAN_SEE_MEMBERS_PAGE == "editors" and is_mediacms_editor(request.user):
@@ -51,7 +94,7 @@ def stuff(request):
     if request.user.is_authenticated:
         ret["CAN_SEARCH_AUTHORS"] = can_see_members_page
     else:
-        ret["CAN_SEARCH_AUTHORS"] = settings.CAN_SEE_MEMBERS_PAGE == "all" and settings.ALLOW_ANONYMOUS_USER_LISTING
+        ret["CAN_SEARCH_AUTHORS"] = settings.CAN_SEE_MEMBERS_PAGE in ("all", "anonymous") and settings.ALLOW_ANONYMOUS_USER_LISTING
     ret["ALLOW_RATINGS"] = settings.ALLOW_RATINGS
     ret["ALLOW_RATINGS_CONFIRMED_EMAIL_ONLY"] = settings.ALLOW_RATINGS_CONFIRMED_EMAIL_ONLY
     ret["VIDEO_PLAYER_FEATURED_VIDEO_ON_INDEX_PAGE"] = settings.VIDEO_PLAYER_FEATURED_VIDEO_ON_INDEX_PAGE
@@ -64,6 +107,27 @@ def stuff(request):
     ret["INCLUDE_LISTING_NUMBERS"] = settings.INCLUDE_LISTING_NUMBERS
     ret["ALLOW_MEDIA_REPLACEMENT"] = getattr(settings, 'ALLOW_MEDIA_REPLACEMENT', False)
     ret["VERSION"] = VERSION
+
+    # Default permission variables (can be overridden by views)
+    ret["CAN_EDIT"] = False
+    ret["CAN_EDIT_MEDIA"] = False
+    ret["CAN_DELETE_MEDIA"] = False
+    ret["CAN_DELETE_COMMENTS"] = False
+    ret["CAN_DELETE"] = False
+    ret["SHOW_CONTACT_FORM"] = False
+
+    # Default media (can be overridden by views, used in config/index.html)
+    ret["media"] = None
+
+    # Default current_site (for email templates and sites framework)
+    if get_current_site:
+        try:
+            ret["current_site"] = get_current_site(request)
+        except Exception:
+            # Sites framework might not be properly configured
+            ret["current_site"] = None
+    else:
+        ret["current_site"] = None
 
     if request.user.is_superuser:
         ret["DJANGO_ADMIN_URL"] = settings.DJANGO_ADMIN_URL

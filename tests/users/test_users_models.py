@@ -1,6 +1,7 @@
 import io
 import os
 import uuid
+from unittest import mock
 
 from allauth.account.models import EmailAddress, EmailConfirmationHMAC
 from allauth.socialaccount.models import SocialAccount
@@ -112,14 +113,23 @@ class UserModelTest(TestCase):
 
 
 class UserMediaCountTest(TestCase):
-    def test_update_user_media_counts_only_listable_media(self):
+    def test_listable_media_count_excludes_private_media(self):
         user = make_user("counter")
         create_media(user, title=unique("public"), state="public")
         create_media(user, title=unique("private"), state="private")
-        user.update_user_media()
-        user.refresh_from_db()
-        self.assertEqual(user.media_count, Media.objects.filter(user=user, listable=True).count())
-        self.assertEqual(user.media_count, 1)
+        self.assertEqual(Media.objects.filter(user=user, listable=True).count(), 1)
+
+    def test_user_admin_annotates_listable_media_count(self):
+        user = make_user("admin_counter")
+        create_media(user, title=unique("public"), state="public")
+        create_media(user, title=unique("private"), state="private")
+        request = RequestFactory().get("/admin/")
+        request.user = make_user("admin_root", is_superuser=True)
+        # media_count is an optional column; enable it so get_queryset annotates.
+        request.session = {UserAdmin.optional_columns_session_key: ["media_count"]}
+        annotated = UserAdmin(User, admin_site).get_queryset(request).get(pk=user.pk)
+        self.assertEqual(annotated.media_count_annot, 1)
+        self.assertEqual(UserAdmin(User, admin_site).media_count(annotated), 1)
 
 
 class SetRoleFromMappingTest(TestCase):
@@ -377,6 +387,21 @@ class AccountAdapterTest(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [user.email])
         self.assertIn("https://x/reset", mail.outbox[0].body)
+
+    def test_send_mail_does_not_swallow_delivery_errors(self):
+        user = make_user("resetfail")
+        with mock.patch("files.methods.get_interactive_email_connection"):
+            with mock.patch.object(self.adapter, "render_mail") as render_mail:
+                message = mock.Mock()
+                message.send.side_effect = OSError("smtp down")
+                render_mail.return_value = message
+                with self.assertRaises(OSError):
+                    self.adapter.send_mail(
+                        "account/email/password_reset_key",
+                        user.email,
+                        {"user": user, "password_reset_url": "https://x/reset", "request": None},
+                    )
+                message.send.assert_called_once_with(fail_silently=False)
 
 
 class UserFormTest(TestCase):

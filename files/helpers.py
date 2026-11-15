@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import random
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,6 +14,8 @@ from fractions import Fraction
 
 import filetype
 from django.conf import settings
+from django.contrib.postgres.search import SearchQuery
+from django.db.models import Q
 from django.utils.safestring import mark_safe
 
 CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -145,12 +148,33 @@ def get_file_type(filename):
 
 
 def rm_file(filename):
+    """Remove one MediaCMS-owned file.
+
+    A symlink (a "preserve" import pointing at an external archive) is only ever
+    unlinked: the target is never followed, opened or removed, and a dangling link is
+    removed too.
+    """
+    if os.path.islink(filename):
+        try:
+            os.unlink(filename)
+            logger.info("Removed symlink without following it - filename=%s", filename)
+            return True
+        except OSError as e:
+            logger.warning("Error removing symlink - filename=%s, error=%s", filename, str(e))
+        return False
     if os.path.isfile(filename):
         try:
             os.remove(filename)
+            logger.debug("Successfully removed file - filename=%s", filename)
             return True
-        except OSError:
-            pass
+        except OSError as e:
+            logger.warning(
+                "Error removing file - filename=%s, error=%s",
+                filename,
+                str(e),
+            )
+        except Exception:
+            logger.exception("Unexpected error removing file - filename=%s", filename)
     return False
 
 
@@ -161,15 +185,37 @@ def rm_files(filenames):
     return True
 
 
+def _removable_roots():
+    """Trees rm_dir may delete inside: the project and where media actually lives"""
+    roots = [settings.BASE_DIR, getattr(settings, "MEDIA_ROOT", None), getattr(settings, "HLS_DIR", None)]
+    return [os.path.join(os.path.normpath(root), "") for root in roots if root]
+
+
 def rm_dir(directory):
+    """Remove one MediaCMS-owned directory tree.
+
+    Symlinks inside the tree (and the directory itself, when it is one) are unlinked,
+    never followed, so an external archive a "preserve" import points at is untouched.
+    """
+    if os.path.islink(directory):
+        return rm_file(directory)
     if os.path.isdir(directory):
-        # refuse to delete a dir inside project BASE_DIR
-        if directory.startswith(settings.BASE_DIR):
+        # refuse to delete a dir outside the project and the media storage trees
+        if any(os.path.join(os.path.normpath(directory), "").startswith(root) for root in _removable_roots()):
             try:
                 shutil.rmtree(directory)
+                logger.debug("Successfully removed directory - directory=%s", directory)
                 return True
-            except (FileNotFoundError, PermissionError):
-                pass
+            except FileNotFoundError:
+                logger.debug("Directory not found during removal - directory=%s", directory)
+            except PermissionError as e:
+                logger.warning(
+                    "Permission denied removing directory - directory=%s, error=%s",
+                    directory,
+                    str(e),
+                )
+            except Exception:
+                logger.exception("Unexpected error removing directory - directory=%s", directory)
     return False
 
 
@@ -186,13 +232,23 @@ def url_from_path(filename):
 
 
 def create_temp_file(suffix=None, dir=settings.TEMP_DIRECTORY):
-    tf = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=dir)
-    return tf.name
+    try:
+        tf = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=dir)
+        logger.debug("Created temporary file - filename=%s, suffix=%s", tf.name, suffix)
+        return tf.name
+    except Exception:
+        logger.exception("Error creating temporary file - suffix=%s, dir=%s", suffix, dir)
+        raise
 
 
 def create_temp_dir(suffix=None, dir=settings.TEMP_DIRECTORY):
-    td = tempfile.mkdtemp(dir=dir)
-    return td
+    try:
+        td = tempfile.mkdtemp(dir=dir)
+        logger.debug("Created temporary directory - dir=%s, suffix=%s", td, suffix)
+        return td
+    except Exception:
+        logger.exception("Error creating temporary directory - suffix=%s, dir=%s", suffix, dir)
+        raise
 
 
 def produce_friendly_token(token_len=settings.FRIENDLY_TOKEN_LEN):
@@ -228,18 +284,69 @@ def run_command(cmd, cwd=None):
     stdout, stderr = process.communicate()
     # TODO: catch unicodedecodeerrors here...
     if process.returncode == 0:
+        logger.debug("Command executed successfully - cmd=%s, cwd=%s", cmd, cwd)
         try:
             ret["out"] = stdout.decode("utf-8")
-        except BaseException:
+        except UnicodeDecodeError as e:
+            logger.warning(
+                "Unicode decode error for command stdout - cmd=%s, cwd=%s, error=%s",
+                cmd,
+                cwd,
+                str(e),
+            )
+            ret["out"] = ""
+        except Exception as e:
+            logger.warning(
+                "Error decoding command stdout - cmd=%s, cwd=%s, error=%s",
+                cmd,
+                cwd,
+                str(e),
+            )
             ret["out"] = ""
         try:
             ret["error"] = stderr.decode("utf-8")
-        except BaseException:
+        except UnicodeDecodeError as e:
+            logger.warning(
+                "Unicode decode error for command stderr - cmd=%s, cwd=%s, error=%s",
+                cmd,
+                cwd,
+                str(e),
+            )
+            ret["error"] = ""
+        except Exception as e:
+            logger.warning(
+                "Error decoding command stderr - cmd=%s, cwd=%s, error=%s",
+                cmd,
+                cwd,
+                str(e),
+            )
             ret["error"] = ""
     else:
+        logger.warning(
+            "Command failed - cmd=%s, returncode=%s, cwd=%s",
+            cmd,
+            process.returncode,
+            cwd,
+        )
         try:
             ret["error"] = stderr.decode("utf-8")
-        except BaseException:
+        except UnicodeDecodeError as e:
+            logger.warning(
+                "Unicode decode error for failed command stderr - cmd=%s, returncode=%s, cwd=%s, error=%s",
+                cmd,
+                process.returncode,
+                cwd,
+                str(e),
+            )
+            ret["error"] = ""
+        except Exception as e:
+            logger.warning(
+                "Error decoding failed command stderr - cmd=%s, returncode=%s, cwd=%s, error=%s",
+                cmd,
+                process.returncode,
+                cwd,
+                str(e),
+            )
             ret["error"] = ""
     return ret
 
@@ -269,6 +376,7 @@ def media_file_info(input_file):
     ret = {}
 
     if not os.path.isfile(input_file):
+        logger.warning("File not found for media info extraction - input_file=%s", input_file)
         ret["fail"] = True
         return ret
 
@@ -279,7 +387,9 @@ def media_file_info(input_file):
     stdout = run_command(cmd).get("out")
     if stdout:
         file_size = int(stdout.strip())
+        logger.debug("File size retrieved - input_file=%s, size=%s", input_file, file_size)
     else:
+        logger.error("Failed to get file size - input_file=%s", input_file)
         ret["fail"] = True
         return ret
 
@@ -304,7 +414,12 @@ def media_file_info(input_file):
     stdout = run_command(cmd).get("out")
     try:
         info = json.loads(stdout)
-    except TypeError:
+    except (TypeError, json.JSONDecodeError) as e:
+        logger.error(
+            "Failed to parse ffprobe JSON output - input_file=%s, error=%s",
+            input_file,
+            str(e),
+        )
         ret["fail"] = True
         return ret
 
@@ -341,6 +456,12 @@ def media_file_info(input_file):
         try:
             hms, msec = duration_str.split(".")
         except ValueError:
+            # Try comma separator as fallback
+            logger.debug(
+                "Duration string uses comma separator, using fallback - input_file=%s, duration_str=%s",
+                input_file,
+                duration_str,
+            )
             hms, msec = duration_str.split(",")
 
         total_dur = sum(int(x) * 60**i for i, x in enumerate(reversed(hms.split(":"))))
@@ -361,6 +482,11 @@ def media_file_info(input_file):
         try:
             video_duration = float(format_info["duration"])
         except KeyError:
+            logger.error(
+                "Duration not found in format info - input_file=%s, format_info=%s",
+                input_file,
+                format_info,
+            )
             ret["fail"] = True
             return ret
 
@@ -421,6 +547,12 @@ def media_file_info(input_file):
             try:
                 hms, msec = duration_str.split(".")
             except ValueError:
+                # Try comma separator as fallback
+                logger.debug(
+                    "Audio duration string uses comma separator, using fallback - input_file=%s, duration_str=%s",
+                    input_file,
+                    duration_str,
+                )
                 hms, msec = duration_str.split(",")
             total_dur = sum(int(x) * 60**i for i, x in enumerate(reversed(hms.split(":"))))
             audio_duration = total_dur + float("0." + msec)
@@ -709,7 +841,12 @@ def get_base_ffmpeg_command(
 def produce_ffmpeg_commands(media_file, media_info, resolution, codec, output_filename, pass_file, chunk=False):
     try:
         media_info = json.loads(media_info)
-    except BaseException:
+    except (TypeError, json.JSONDecodeError) as e:
+        logger.warning(
+            "Failed to parse media_info JSON, using empty dict - media_file=%s, error=%s",
+            media_file,
+            str(e),
+        )
         media_info = {}
 
     if codec == "h264":
@@ -794,6 +931,44 @@ def clean_query(query):
         query = query.replace(char, "")
 
     return query.lower()
+
+
+# Hiragana, Katakana, CJK Unified Ideographs (+ common extensions), Hangul
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff" r"\uac00-\ud7af\u1100-\u11ff]")
+
+
+def contains_cjk(text):
+    """Return True if text contains CJK (Chinese/Japanese/Korean) characters."""
+    if not text:
+        return False
+    return bool(_CJK_RE.search(text))
+
+
+def prepare_media_search_filter(raw_query):
+    """Build a Q filter for media search.
+
+    Latin tokens keep Postgres FTS prefix matching (term:*). Tokens that
+    contain CJK characters use title/description substring matching so
+    mid-string queries work in scripts without word spaces.
+
+    :param raw_query: str - user search query
+    :return: django.db.models.Q or None if there is nothing to filter on
+    """
+    from .stop_words import STOP_WORDS
+
+    query = clean_query(raw_query)
+    q_parts = [q_part.rstrip("y") for q_part in query.split() if q_part not in STOP_WORDS]
+    if not q_parts:
+        return None
+
+    combined = None
+    for part in q_parts:
+        if contains_cjk(part):
+            part_filter = Q(title__icontains=part) | Q(description__icontains=part)
+        else:
+            part_filter = Q(search=SearchQuery(part + ":*", search_type="raw"))
+        combined = part_filter if combined is None else combined & part_filter
+    return combined
 
 
 def timestamp_to_seconds(timestamp):
@@ -967,7 +1142,11 @@ def trim_video_method(media_file_path, timestamps_list):
             shutil.copy2(output_file, media_file_path)
             return True
         except Exception as e:
-            logger.info(f"Failed to replace original file: {str(e)}")
+            logger.error(
+                "Failed to replace original file with trimmed version - media_file_path=%s, error=%s",
+                media_file_path,
+                str(e),
+            )
             return False
 
 

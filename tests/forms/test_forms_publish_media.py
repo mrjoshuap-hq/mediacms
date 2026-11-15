@@ -2,9 +2,11 @@ import json
 import re
 import uuid
 
+from crispy_forms.utils import render_crispy_form
 from django.test import RequestFactory, TestCase, override_settings
 
 from files.forms import MediaPublishForm
+from files.methods import set_media_password, verify_media_password
 from files.models import Category, Media, MediaPermission
 from files.tests import create_account, create_media
 from files.widgets import CategoryModalWidget
@@ -37,6 +39,16 @@ class PublishFormFieldsTest(TestCase):
             with self.subTest(field=field):
                 self.assertTrue(form.fields[field].disabled)
                 self.assertEqual(form.fields[field].widget.attrs["class"], "read-only-field")
+
+    def test_is_reviewed_initial_matches_instance_for_owners(self):
+        # Regression for #1275: field must stay on the form (disabled) so the UI
+        # shows the real DB value instead of defaulting to checked/true.
+        Media.objects.filter(pk=self.public.pk).update(is_reviewed=False)
+        self.public.refresh_from_db()
+        form = MediaPublishForm(self.owner, instance=self.public)
+        self.assertIn("is_reviewed", form.fields)
+        self.assertTrue(form.fields["is_reviewed"].disabled)
+        self.assertFalse(form.initial.get("is_reviewed", form.fields["is_reviewed"].initial))
 
     def test_moderation_fields_are_editable_for_editors(self):
         form = MediaPublishForm(self.editor, instance=self.public)
@@ -80,6 +92,27 @@ class PublishFormFieldsTest(TestCase):
         request.session = {}
         form = MediaPublishForm(self.owner, instance=self.public, request=request)
         self.assertEqual(form.fields["category"].queryset.count(), Category.objects.count())
+
+    def test_unprotected_media_omits_clear_control_and_status(self):
+        form = MediaPublishForm(self.owner, instance=self.public)
+        self.assertFalse(form.has_password)
+        self.assertNotIn("clear_password", form.fields)
+        html = render_crispy_form(form)
+        self.assertNotIn("Password protection is on", html)
+        self.assertNotIn('name="clear_password"', html)
+        self.assertIn("Leave blank for no password", html)
+
+    def test_protected_media_shows_status_and_clear_control(self):
+        set_media_password(self.public, "gate-key")
+        self.public.save(update_fields=["password"])
+        form = MediaPublishForm(self.owner, instance=self.public)
+        self.assertTrue(form.has_password)
+        self.assertIn("clear_password", form.fields)
+        html = render_crispy_form(form)
+        self.assertIn("Password protection is on", html)
+        self.assertIn('name="clear_password"', html)
+        self.assertIn("Remove password protection", html)
+        self.assertIn("Check Remove password protection and publish to turn it off", html)
 
 
 @override_settings(USE_RBAC=True)
@@ -159,6 +192,23 @@ class PublishMediaSubmitTest(TestCase):
     def test_restricted_workflow_still_allows_unlisted(self):
         self.post(self.owner, state="unlisted")
         self.assertEqual(self.reload().state, "unlisted")
+
+    def test_owner_can_set_and_clear_password_protection(self):
+        self.post(self.owner, state="unlisted", password="gate-key")
+        media = self.reload()
+        self.assertTrue(media.password)
+        self.assertNotEqual(media.password, "gate-key")
+        self.assertTrue(verify_media_password(media, "gate-key"))
+
+        self.post(self.owner, state="unlisted", clear_password="on")
+        media = self.reload()
+        self.assertEqual(media.password, "")
+
+    def test_blank_password_keeps_existing_protection(self):
+        self.post(self.owner, state="unlisted", password="keep-me")
+        self.post(self.owner, state="unlisted", password="")
+        media = self.reload()
+        self.assertTrue(verify_media_password(media, "keep-me"))
 
     @override_settings(PORTAL_WORKFLOW="private")
     def test_editor_may_publish_under_a_private_workflow(self):

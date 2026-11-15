@@ -71,12 +71,66 @@ class MediaUploadTest(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertTrue(Media.objects.get(friendly_token=response.data["friendly_token"]).title.startswith("holiday"))
 
-    def test_client_cannot_choose_read_only_fields(self):
-        response = self.upload(title="sneaky", state="private", featured=True, reported_times=5)
+    def test_client_cannot_choose_editor_only_read_only_fields(self):
+        response = self.upload(title="sneaky", featured=True, reported_times=5)
         media = Media.objects.get(friendly_token=response.data["friendly_token"])
-        self.assertEqual(media.state, "public")
         self.assertFalse(media.featured)
         self.assertEqual(media.reported_times, 0)
+
+    def test_upload_can_set_state_category_tags_and_flags(self):
+        category = Category.objects.create(title="Upload Cat", user=self.user, uid="upload-cat-1")
+        response = self.upload(
+            title="with meta",
+            state="unlisted",
+            category_uids=category.uid,
+            tag_titles="alpha,beta",
+            enable_comments=False,
+            allow_download=False,
+        )
+        self.assertEqual(response.status_code, 201)
+        media = Media.objects.get(friendly_token=response.data["friendly_token"])
+        self.assertEqual(media.state, "unlisted")
+        self.assertFalse(media.enable_comments)
+        self.assertFalse(media.allow_download)
+        self.assertEqual(list(media.category.values_list("uid", flat=True)), [category.uid])
+        self.assertEqual(set(media.tags.values_list("title", flat=True)), {"alpha", "beta"})
+
+    def test_upload_can_set_category_by_title(self):
+        category = Category.objects.create(title="By Title Cat", user=self.user)
+        by_titles = self.upload(title="via category_titles", category_titles=category.title)
+        self.assertEqual(by_titles.status_code, 201)
+        media = Media.objects.get(friendly_token=by_titles.data["friendly_token"])
+        self.assertEqual(list(media.category.values_list("uid", flat=True)), [category.uid])
+
+        by_uids_field = self.upload(title="via category_uids title", category_uids=category.title)
+        self.assertEqual(by_uids_field.status_code, 201)
+        media = Media.objects.get(friendly_token=by_uids_field.data["friendly_token"])
+        self.assertEqual(list(media.category.values_list("uid", flat=True)), [category.uid])
+
+    @override_settings(PORTAL_WORKFLOW="private")
+    def test_non_editor_cannot_upload_as_public_when_workflow_forbids_it(self):
+        response = self.upload(title="want public", state="public")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("state", response.data)
+        self.assertFalse(Media.objects.filter(user=self.user).exists())
+
+    def test_non_editor_cannot_set_owner_on_upload(self):
+        other = create_account()
+        response = self.upload(title="as other", owner=other.username)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("owner", response.data)
+        self.assertFalse(Media.objects.filter(user=self.user).exists())
+
+    def test_editor_can_upload_as_another_user(self):
+        editor = create_account(is_editor=True)
+        other = create_account()
+        client = APIClient()
+        client.force_authenticate(editor)
+        response = self.upload(client=client, title="owned by other", owner=other.username)
+        self.assertEqual(response.status_code, 201)
+        media = Media.objects.get(friendly_token=response.data["friendly_token"])
+        self.assertEqual(media.user, other)
+        self.assertEqual(response.data["user"], other.username)
 
     def test_anonymous_cannot_upload(self):
         self.assertIn(self.upload(client=APIClient()).status_code, (401, 403))
@@ -166,6 +220,14 @@ class MediaUploadTest(TestCase):
         with self.settings(CAN_ADD_MEDIA="nobody"):
             self.assertEqual(self.client.get(MEDIA_LIST_URL).status_code, 200)
 
+    @override_settings(MEDIA_IS_REVIEWED=False)
+    def test_upload_defaults_to_unreviewed_when_review_is_required(self):
+        response = self.upload(title="needs review")
+        self.assertEqual(response.status_code, 201)
+        media = Media.objects.get(friendly_token=response.data["friendly_token"])
+        self.assertFalse(media.is_reviewed)
+        self.assertFalse(media.listable)
+
 
 class MediaEncodingInfoTest(TestCase):
     fixtures = ["fixtures/categories.json", "fixtures/encoding_profiles.json"]
@@ -184,7 +246,12 @@ class MediaEncodingInfoTest(TestCase):
         successful = [info for resolution in encodings.values() for info in resolution.values() if info.get("status") == "success"]
         self.assertTrue(successful)
         self.assertTrue(all(info["url"] for info in successful))
-        self.assertTrue(response.data["hls_info"])
+        from tests._support.bento import mp4hls_is_usable
+
+        if mp4hls_is_usable(video.media_file.path):
+            self.assertTrue(response.data["hls_info"])
+        else:
+            self.assertFalse(response.data.get("hls_info"))
 
 
 class MediaSearchEdgeCasesTest(TestCase):
@@ -286,3 +353,46 @@ class MediaSearchEdgeCasesTest(TestCase):
         self.assertTrue(item["api_url"].endswith(f"/api/v1/media/{self.foreign.friendly_token}"))
         self.assertEqual(item["categories_info"], [])
         self.assertNotIn("state", item)
+
+
+class MediaSearchCJKTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = create_account()
+        cls.infix = create_media(cls.owner, title="東京都庁", state="public")
+        cls.prefix = create_media(cls.owner, title="京都観光", state="public")
+        cls.latin = create_media(cls.owner, title="Zebra ancient", state="public")
+        cls.desc = create_media(cls.owner, title="Plain latin title", description="案内は東京都庁です", state="public")
+        cls.mixed = create_media(cls.owner, title="京都 festival", state="public")
+        for media in (cls.infix, cls.prefix, cls.latin, cls.desc, cls.mixed):
+            media.update_search_vector()
+
+    def search(self, **params):
+        client = APIClient()
+        response = client.get(SEARCH_URL, params)
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def found(self, **params):
+        return [item["title"] for item in self.search(**params).data["results"]]
+
+    def test_cjk_infix_match_in_title(self):
+        self.assertIn("東京都庁", self.found(q="京都"))
+
+    def test_cjk_prefix_match_in_title(self):
+        self.assertIn("京都観光", self.found(q="京都"))
+
+    def test_cjk_infix_match_in_description(self):
+        self.assertIn("Plain latin title", self.found(q="東京都庁"))
+
+    def test_latin_prefix_matching_is_unchanged(self):
+        self.assertIn("Zebra ancient", self.found(q="ancie"))
+
+    def test_multi_word_latin_and_still_requires_all_words(self):
+        self.assertEqual(self.found(q="zebra ancient"), ["Zebra ancient"])
+        self.assertEqual(self.found(q="zebra festival"), [])
+
+    def test_mixed_cjk_and_latin_query_ands_tokens(self):
+        self.assertEqual(self.found(q="京都 festival"), ["京都 festival"])
+        self.assertNotIn("東京都庁", self.found(q="京都 festival"))
+        self.assertNotIn("Zebra ancient", self.found(q="京都 festival"))

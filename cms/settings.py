@@ -1,3 +1,4 @@
+import logging
 import os
 
 from celery.schedules import crontab
@@ -73,6 +74,8 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 EMAIL_HOST = "mediacms.io"
 EMAIL_PORT = 587
 ADMIN_EMAIL_LIST = ["info@mediacms.io"]
+# Avoid indefinite hangs when SMTP/TLS handshake fails (e.g. wrong SSL vs TLS).
+EMAIL_TIMEOUT = 10
 
 
 MEDIA_IS_REVIEWED = True  # whether an admin needs to review a media file.
@@ -137,10 +140,14 @@ ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
 ACCOUNT_USERNAME_MIN_LENGTH = 4
 ACCOUNT_ADAPTER = "users.adapter.MyAccountAdapter"
 ACCOUNT_SIGNUP_FORM_CLASS = "users.forms.SignupForm"
+ACCOUNT_FORMS = {"login": "users.forms.LoginForm"}
 ACCOUNT_USERNAME_VALIDATORS = "users.validators.custom_username_validators"
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*"]
 ACCOUNT_LOGIN_ON_PASSWORD_RESET = True
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 1
+# Email a one-time sign-in code. Off until a portal turns it on; the login
+# page shows the link only when this is true (and the process is restarted).
+ACCOUNT_LOGIN_BY_CODE_ENABLED = False
 ALLAUTH_TRUSTED_PROXY_COUNT = 1
 # registration won't be open, might also consider to remove links for register
 USERS_CAN_SELF_REGISTER = True
@@ -198,9 +205,13 @@ MEDIA_ROOT = BASE_DIR + "/media_files/"
 
 MEDIA_UPLOAD_DIR = "original/"
 MEDIA_ENCODING_DIR = "encoded/"
-THUMBNAIL_UPLOAD_DIR = f"{MEDIA_UPLOAD_DIR}/thumbnails/"
-SUBTITLES_UPLOAD_DIR = f"{MEDIA_UPLOAD_DIR}/subtitles/"
+THUMBNAIL_UPLOAD_DIR = "thumbnails/"
+SUBTITLES_UPLOAD_DIR = "subtitles/"
 HLS_DIR = os.path.join(MEDIA_ROOT, "hls/")
+
+# Operator-owned library tree scanned by filesystem sync. It is never published through
+# nginx and is not part of MEDIA_ROOT; mount it (read-only is fine for symlink "preserve").
+FILESYSTEM_IMPORT_ROOT = "/external-media_files"
 
 # Protect media files via nginx auth_request
 # When True, nginx delegates authorization for /media/<protected>/... to a
@@ -208,7 +219,7 @@ HLS_DIR = os.path.join(MEDIA_ROOT, "hls/")
 USE_X_ACCEL_REDIRECT = True
 # Subdirectories of MEDIA_ROOT that should be gated. "chunks" is intentionally
 # omitted (upload state, not playback).
-X_ACCEL_PROTECTED_PATHS = ["encoded", "hls", "original"]
+X_ACCEL_PROTECTED_PATHS = ["encoded", "hls", "original", "thumbnails", "subtitles", "categories"]
 X_ACCEL_AUTH_CACHE_SECONDS = 300
 
 FFMPEG_COMMAND = "ffmpeg"  # this is the path
@@ -228,6 +239,9 @@ FRIENDLY_TOKEN_LEN = 9
 CHUNKIZE_VIDEO_DURATION = 60 * 5
 # aparently this has to be smaller than VIDEO_CHUNKIZE_DURATION
 VIDEO_CHUNKS_DURATION = 60 * 4
+# orphan encoding .mkv segments (and stuck chunk Encoding rows) older than this
+# are removed by the cleanup_encoding_chunks beat task
+ENCODING_CHUNKS_RETENTION_HOURS = 24
 
 # always get these two, even if upscaling
 MINIMUM_RESOLUTIONS_TO_ENCODE = [144, 240]
@@ -314,6 +328,10 @@ INSTALLED_APPS = [
     "uploader.apps.UploaderConfig",
     "djcelery_email",
     "drf_yasg",
+    "allauth.socialaccount.providers.google",
+    "allauth.socialaccount.providers.github",
+    "allauth.socialaccount.providers.facebook",
+    "allauth.socialaccount.providers.openid_connect",
     "allauth.socialaccount.providers.saml",
     "saml_auth.apps.SamlAuthConfig",
     "tinymce",
@@ -383,31 +401,15 @@ error_filename = os.path.join(LOGS_DIR, "debug.log")
 if not os.path.exists(LOGS_DIR):
     try:
         os.mkdir(LOGS_DIR)
-    except PermissionError:
+    except PermissionError as e:
+        # Logging not yet configured, use basic logging
+        logging.warning("Failed to create logs directory: %s - %s", type(e).__name__, str(e))
         pass
 
 if not os.path.isfile(error_filename):
     open(error_filename, 'a').close()
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "handlers": {
-        "file": {
-            "level": "ERROR",
-            "class": "logging.FileHandler",
-            "filename": error_filename,
-        },
-    },
-    "loggers": {
-        "django": {
-            "handlers": ["file"],
-            "level": "ERROR",
-            "propagate": True,
-        },
-    },
-}
-
+# LOGGING is configured later via LOGLEVEL / DEBUG (see below)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -469,9 +471,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "update_listings_thumbnails",
         "schedule": crontab(minute=2, hour="*/30"),
     },
+    "cleanup_encoding_chunks": {
+        "task": "cleanup_encoding_chunks",
+        "schedule": crontab(hour=3, minute=15),
+    },
 }
-# TODO: beat, delete chunks from media root
-# chunks_dir after xx days...(also uploads_dir)
+# TODO: beat, delete upload chunks_dir after xx days...(also uploads_dir)
 
 
 LOCAL_INSTALL = False
@@ -560,7 +565,7 @@ TINYMCE_DEFAULT_CONFIG = {
 
 SPRITE_NUM_SECS = 10
 # number of seconds for sprite image.
-# If you plan to change this, you must also follow the instructions on admins_docs.md
+# If you plan to change this, follow docs/en/getting-started/deploy.md and the nginx notes there
 # to change the equivalent value in ./frontend/src/static/js/components/media-viewer/VideoViewer/index.js and then re-build frontend
 
 # how many images will be shown on the slideshow
@@ -587,7 +592,78 @@ MIGRATION_API_TIMEOUT = 60
 MIGRATION_DOWNLOAD_TIMEOUT = 60 * 30
 MIGRATION_MAX_RETRIES = 5
 
-JAZZMIN_UI_TWEAKS = {"theme": "flatly"}
+# Enable Jazzmin's navbar language dropdown. Selection posts to Django's
+# /i18n/setlang/ and sets the django_language cookie, which LocaleMiddleware
+# prefers over Accept-Language — so users can override the browser language
+# for both admin and the main site.
+JAZZMIN_SETTINGS = {
+    "language_chooser": True,
+    # Collapse sidebar groups by default (Jazzmin treeview in templates/admin/base.html).
+    "navigation_expanded": False,
+    "order_with_respect_to": [
+        "moderation",
+        "library",
+        "processing",
+        "people",
+        "integrations",
+        "site",
+    ],
+    # Jazzmin lowercases icon keys before lookup (app_label / app_label.object_name).
+    "icons": {
+        "moderation": "fas fa-shield-alt",
+        "library": "fas fa-photo-video",
+        "processing": "fas fa-cogs",
+        "people": "fas fa-users",
+        "site": "fas fa-sliders-h",
+        "integrations": "fas fa-plug",
+        "moderation.moderationoverview": "fas fa-tachometer-alt",
+        "moderation.reportedmedia": "fas fa-flag",
+        "moderation.abovereportlimit": "fas fa-exclamation-triangle",
+        "moderation.needsreview": "fas fa-eye-slash",
+        "moderation.mediaaction": "fas fa-history",
+        "moderation.comment": "fas fa-comments",
+        "library.libraryoverview": "fas fa-tachometer-alt",
+        "library.engagementoverview": "fas fa-heart",
+        "library.media": "fas fa-video",
+        "library.category": "fas fa-folder",
+        "library.tag": "fas fa-tags",
+        "library.playlist": "fas fa-list",
+        "library.channel": "fas fa-broadcast-tower",
+        "processing.processingoverview": "fas fa-tachometer-alt",
+        "processing.encodingqueue": "fas fa-stream",
+        "processing.failedencodings": "fas fa-times-circle",
+        "processing.encoding": "fas fa-film",
+        "processing.subtitle": "fas fa-closed-captioning",
+        "processing.transcriptionrequest": "fas fa-microphone",
+        "processing.videotrimrequest": "fas fa-cut",
+        "people.peopleoverview": "fas fa-tachometer-alt",
+        "people.user": "fas fa-user",
+        "people.waitingforapproval": "fas fa-user-clock",
+        "people.emailaddress": "fas fa-envelope",
+        "people.rbacgroup": "fas fa-user-friends",
+        "people.rbacmembership": "fas fa-id-badge",
+        "site.siteoverview": "fas fa-tachometer-alt",
+        "site.sitehealth": "fas fa-heartbeat",
+        "site.siteconfiguration": "fas fa-cog",
+        "site.sitesystem": "fas fa-server",
+        "site.page": "fas fa-file-alt",
+        "site.license": "fas fa-balance-scale",
+        "site.encodeprofile": "fas fa-sliders-h",
+        "site.language": "fas fa-language",
+        "site.mediapermission": "fas fa-user-lock",
+        "site.site": "fas fa-globe",
+        "integrations.integrationsoverview": "fas fa-tachometer-alt",
+        "integrations.socialapp": "fas fa-key",
+        "integrations.socialaccount": "fas fa-user-circle",
+        "integrations.loginoption": "fas fa-sign-in-alt",
+        "integrations.identityprovideruserlog": "fas fa-clipboard-list",
+        "integrations.samlconfiguration": "fas fa-shield-alt",
+        "integrations.ltiplatform": "fas fa-chalkboard-teacher",
+        "integrations.migrationservice": "fas fa-exchange-alt",
+        "integrations.migrationrecord": "fas fa-database",
+    },
+}
+JAZZMIN_UI_TWEAKS = {"theme": "flatly", "dark_mode_theme": "darkly"}
 
 USE_ROUNDED_CORNERS = True
 
@@ -599,8 +675,14 @@ ALLOW_MEDIA_REPLACEMENT = False
 
 ALLOW_ANONYMOUS_USER_LISTING = True
 
+# Whether the populate_fake_media management command may run.
+# None means follow DEBUG after settings are fully loaded (off in production,
+# on when DEBUG is True). Override explicitly via local_settings or the
+# ALLOW_POPULATE_FAKE_MEDIA environment variable.
+ALLOW_POPULATE_FAKE_MEDIA = None
+
 # Who can see the members page
-# valid choices are all, editors, admins
+# valid choices are anonymous, all, editors, admins
 CAN_SEE_MEMBERS_PAGE = "all"
 
 # User search field setting
@@ -632,17 +714,216 @@ WHISPER_MODEL = "base"
 # show a custom text in the sidebar footer, otherwise the default will be shown if this is empty
 SIDEBAR_FOOTER_TEXT = ""
 
+# Reverse proxy configuration settings
+# These settings control how MediaCMS handles requests from reverse proxies (nginx, Apache, load balancers, etc.)
+# For detailed documentation, see docs/en/guides/admin/settings.md and docs/en/getting-started/deploy.md
+
+# TRUSTED_PROXIES: List of IP addresses or CIDR networks that are trusted proxies
+# Only proxy headers (X-Forwarded-For, X-Real-IP) from these IPs will be trusted
+# Default: Empty list (no proxies trusted - backward compatible)
+# Format: List of strings like ['127.0.0.1', '10.0.0.0/8', '192.168.0.0/16']
+# Empty list means no proxies trusted (backward compatible - existing deployments work as-is)
+# See commented examples below for common trusted proxy configurations
+TRUSTED_PROXIES = []
+# [
+#     '127.0.0.1/32',  # IPv4 localhost
+#     '::1/128',  # IPv6 localhost
+#     '10.0.0.0/8',  # Private network (RFC 1918)
+#     '172.16.0.0/12',  # Private network (RFC 1918)
+#     '192.168.0.0/16',  # Private network (RFC 1918)
+#     'fc00::/7',  # IPv6 private networks (RFC 4193)
+# ]
+
+# PROXY_AWARE_MIDDLEWARE_ENABLED: Enable the proxy-aware middleware
+# When enabled, the middleware will extract real client IPs from proxy headers
+# Default: True if TRUSTED_PROXIES is configured, False otherwise
+# Can be overridden in local_settings.py
+PROXY_AWARE_MIDDLEWARE_ENABLED = bool(TRUSTED_PROXIES)
+
+# SET_REAL_IP_IN_META: Whether to modify request.META['REMOTE_ADDR'] with the real client IP
+# When True: Sets REMOTE_ADDR to real client IP (allows Django's built-in middleware to work)
+# When False: Only sets request.client_ip attribute (safer default, recommended)
+# Default: False for maximum security
+SET_REAL_IP_IN_META = False
+
+# USE_X_FORWARDED_HOST: Use X-Forwarded-Host header to determine the host
+# Set to True when behind a reverse proxy that sets this header
+# Default: False (backward compatible)
+USE_X_FORWARDED_HOST = False
+
+# SECURE_PROXY_SSL_HEADER: Tuple specifying header that indicates HTTPS connection
+# Example: ('HTTP_X_FORWARDED_PROTO', 'https')
+# Set this when behind a reverse proxy that terminates SSL/TLS
+# Default: None (backward compatible)
+SECURE_PROXY_SSL_HEADER = None
+
 try:
     # keep a local_settings.py file for local overrides
     from .local_settings import *  # noqa
 
     # ALLOWED_HOSTS needs a url/ip
     ALLOWED_HOSTS.append(FRONTEND_HOST.replace("http://", "").replace("https://", ""))
-except ImportError:
+except ImportError as e:
     # local_settings not in use
+    # Use basic logging since logger is not yet configured
+    logging.warning("local_settings.py not found or import failed: %s - %s", type(e).__name__, str(e))
     pass
 
 # Don't add new settings below that could be overridden in local_settings.py!!!
+
+# Logging configuration
+# Note: This is placed after local_settings import so that DEBUG overrides from local_settings
+# are properly reflected in the logging configuration
+# Default: ERROR-level file logging (preserves existing behavior)
+# Enhanced: Console handler and formatters available when DEBUG=True
+# LOGLEVEL can be overridden via environment variable or local_settings.py
+# Env wins when set; otherwise keep a local_settings value; otherwise ERROR.
+LOGLEVEL = os.environ.get("LOGLEVEL", globals().get("LOGLEVEL", "ERROR"))
+
+# Enable SQL debug logging (default: False)
+# When DEBUG=True, SQL queries are only logged if ENABLE_SQL_DEBUG_LOGGING is also True
+# This can be set via environment variable or local_settings.py
+_sql_debug_env = os.environ.get("ENABLE_SQL_DEBUG_LOGGING")
+if _sql_debug_env is not None:
+    ENABLE_SQL_DEBUG_LOGGING = _sql_debug_env.lower() == "true"
+else:
+    ENABLE_SQL_DEBUG_LOGGING = bool(globals().get("ENABLE_SQL_DEBUG_LOGGING", False))
+
+# Determine effective log level: use DEBUG when DEBUG=True, otherwise use LOGLEVEL
+effective_log_level = "DEBUG" if DEBUG else LOGLEVEL
+
+# App packages that use logging.getLogger(__name__). Child loggers (e.g.
+# admin_customizations.views, files.tasks, lti.handlers) inherit these.
+# Keep in sync with INSTALLED_APPS custom packages that emit logs.
+MEDIACMS_APP_LOGGERS = (
+    "files",
+    "users",
+    "uploader",
+    "saml_auth",
+    "rbac",
+    "identity_providers",
+    "actions",
+    "cms",
+    "admin_customizations",
+    "lti",
+    "migrationservice",
+)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {name} {funcName}:{lineno} {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+        "detailed": {
+            "format": "{levelname} {asctime} {name} {funcName}:{lineno} [{pathname}:{lineno}] {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "file": {
+            "level": effective_log_level,
+            "class": "logging.FileHandler",
+            "filename": error_filename,
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["file"],
+            "level": effective_log_level,
+            "propagate": True,
+        },
+        # Propagate so assertLogs / parent capture still works in tests.
+        "users": {
+            "handlers": ["file"],
+            "level": effective_log_level,
+            "propagate": True,
+        },
+        "users.models": {
+            "handlers": ["file"],
+            "level": effective_log_level,
+            "propagate": False,
+        },
+        "saml_auth": {
+            "handlers": ["file"],
+            "level": effective_log_level,
+            "propagate": True,
+        },
+        # Celery always writes to the file handler (console only when DEBUG).
+        "celery": {
+            "handlers": ["file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "celery.task": {
+            "handlers": ["file"],
+            "level": effective_log_level,
+            "propagate": False,
+        },
+        "celery.utils.functional": {
+            "handlers": ["file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
+
+for _app_logger in MEDIACMS_APP_LOGGERS:
+    if _app_logger in LOGGING["loggers"]:
+        continue
+    LOGGING["loggers"][_app_logger] = {
+        "handlers": ["file"],
+        "level": effective_log_level,
+        "propagate": False,
+    }
+
+# Enhanced logging configuration when DEBUG=True
+# Adds console handler and additional loggers for development
+if DEBUG:
+    LOGGING["handlers"]["console"] = {
+        "level": "DEBUG",
+        "class": "logging.StreamHandler",
+        "formatter": "detailed",
+    }
+    # Set django.db.backends to DEBUG for detailed SQL logging in development
+    # Only enable SQL debug logging if explicitly requested via ENABLE_SQL_DEBUG_LOGGING
+    if ENABLE_SQL_DEBUG_LOGGING:
+        LOGGING["loggers"]["django.db.backends"] = {
+            "handlers": ["file", "console"],
+            "level": "DEBUG",
+            "propagate": False,
+        }
+    else:
+        # Explicitly suppress SQL query logging when ENABLE_SQL_DEBUG_LOGGING is False
+        LOGGING["loggers"]["django.db.backends"] = {
+            "handlers": ["file", "console"],
+            "level": "ERROR",
+            "propagate": False,
+        }
+    # Add console handler to existing loggers for DEBUG mode
+    LOGGING["loggers"]["django"]["handlers"] = ["file", "console"]
+    LOGGING["loggers"]["celery"]["handlers"] = ["file", "console"]
+    LOGGING["loggers"]["celery.task"]["handlers"] = ["file", "console"]
+    LOGGING["loggers"]["celery.task"]["level"] = "DEBUG"
+    LOGGING["loggers"]["celery.utils.functional"]["handlers"] = ["file", "console"]
+    LOGGING["loggers"]["django.request"] = {
+        "handlers": ["file", "console"],
+        "level": "DEBUG",
+        "propagate": False,
+    }
+    for app_name in MEDIACMS_APP_LOGGERS:
+        if app_name in LOGGING["loggers"]:
+            LOGGING["loggers"][app_name]["handlers"] = ["file", "console"]
+    if "users.models" in LOGGING["loggers"]:
+        LOGGING["loggers"]["users.models"]["handlers"] = ["file", "console"]
+
+# Initialize logger after LOGGING configuration
+logger = logging.getLogger(__name__)
 
 if "http" not in FRONTEND_HOST:
     # FRONTEND_HOST needs a http:// preffix
@@ -657,17 +938,38 @@ else:
 # CSRF_COOKIE_SECURE = True
 # SESSION_COOKIE_SECURE = True
 
+# Session and CSRF cookie settings for reverse proxy support
+# When behind a reverse proxy with HTTPS, you may need to enable these:
+# - Set CSRF_COOKIE_SECURE = True
+# - Set SESSION_COOKIE_SECURE = True
+# - Set SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# The default SameSite settings ('Lax') work well with most reverse proxies
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+# SESSION_COOKIE_DOMAIN is None by default, which respects the proxy's Host header
+
 PYSUBS_COMMAND = "pysubs2"
 
 # the following is related to local development using docker
 # and docker-compose-dev.yaml
 try:
     DEVELOPMENT_MODE = os.environ.get("DEVELOPMENT_MODE")
+    # dev_settings replaces INSTALLED_APPS, which drops apps appended in local_settings.
+    _apps_before_dev = list(INSTALLED_APPS)
     if DEVELOPMENT_MODE:
         # keep a dev_settings.py file for local overrides
         from .dev_settings import *  # noqa
-except ImportError:
+
+        for _app in _apps_before_dev:
+            if _app not in INSTALLED_APPS:
+                INSTALLED_APPS.append(_app)
+except ImportError as e:
+    logger.warning("dev_settings.py import failed: %s - %s", type(e).__name__, str(e))
     pass
+
+# Resolve after local_settings / DEVELOPMENT_MODE may have changed DEBUG.
+if ALLOW_POPULATE_FAKE_MEDIA is None:
+    ALLOW_POPULATE_FAKE_MEDIA = bool(DEBUG)
 
 
 if GLOBAL_LOGIN_REQUIRED:
@@ -682,6 +984,19 @@ if USERS_NEEDS_TO_BE_APPROVED:
     )
     auth_index = MIDDLEWARE.index("django.contrib.auth.middleware.AuthenticationMiddleware")
     MIDDLEWARE.insert(auth_index + 1, "cms.middleware.ApprovalMiddleware")
+
+# Conditionally add ProxyAwareMiddleware if enabled
+# Insert after SecurityMiddleware, before SessionMiddleware
+# This allows the middleware to process proxy headers early in the request chain
+# Note: PROXY_AWARE_MIDDLEWARE_ENABLED is evaluated here, after potential local_settings override
+if PROXY_AWARE_MIDDLEWARE_ENABLED:
+    try:
+        security_index = MIDDLEWARE.index("django.middleware.security.SecurityMiddleware")
+        # Insert after SecurityMiddleware, before SessionMiddleware
+        MIDDLEWARE.insert(security_index + 1, "cms.middleware.ProxyAwareMiddleware")
+    except ValueError:
+        # SecurityMiddleware not found, insert at beginning
+        MIDDLEWARE.insert(0, "cms.middleware.ProxyAwareMiddleware")
 
 
 # LTI 1.3 Integration Settings

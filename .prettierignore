@@ -1,4 +1,25 @@
 /templates/cms/*
 /templates/*.html
 *.scss
-/frontend/
+
+# Dependencies and build outputs
+**/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend-tools/**/dist/
+static/video_js/
+static/video_editor/
+static/chapters_editor/
+static/js/
+
+# MkDocs output and generated pages (source styles live in docs/_shared/)
+/site/
+/mkdocs.local.yml
+/docs/en/assets/
+/docs/en/stylesheets/
+/docs/en/languages.md
+/docs/en/reference/api.md
+/docs/en/reference/changelog.md
+/docs/en/reference/openapi.yaml
+/docs/en/reference/this-version.md
+/docs/en/reference/whats-new.md

@@ -11,6 +11,10 @@ cp /home/mediacms.io/mediacms/deploy/docker/local_settings.py /home/mediacms.io/
 mkdir -p /home/mediacms.io/mediacms/{logs,media_files/hls}
 touch /home/mediacms.io/mediacms/logs/debug.log
 
+# Mount point for filesystem library sync (settings.FILESYSTEM_IMPORT_ROOT). Operators bind
+# their library here; creating the directory when nothing is mounted is harmless.
+mkdir -p /external-media_files 2>/dev/null || true
+
 mkdir -p /var/run/mediacms
 chown www-data:www-data /var/run/mediacms
 

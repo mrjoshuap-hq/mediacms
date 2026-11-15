@@ -14,7 +14,7 @@ interface EditorState {
 
 const useVideoChapters = () => {
     // Helper function to generate proper chapter name based on chronological position
-    const generateChapterName = (newSegmentStartTime: number, existingSegments: Segment[]): string => {
+    const _generateChapterName = (newSegmentStartTime: number, existingSegments: Segment[]): string => {
         // Create a temporary array with all segments including the new one
         const allSegments = [...existingSegments, { startTime: newSegmentStartTime } as Segment];
         // Sort by start time to find chronological position
@@ -30,10 +30,10 @@ const useVideoChapters = () => {
         const sortedSegments = [...segments].sort((a, b) => a.startTime - b.startTime);
 
         // Renumber each segment based on its chronological position
-        // Only update titles that follow the default "Chapter X" pattern to preserve custom titles
+        // Empty titles and default "Chapter X" titles are renumbered; custom titles stay.
         return sortedSegments.map((segment, index) => {
-            const currentTitle = segment.chapterTitle || '';
-            const isDefaultTitle = /^Chapter \d+$/.test(currentTitle);
+            const currentTitle = (segment.chapterTitle || '').trim();
+            const isDefaultTitle = !currentTitle || /^Chapter \d+$/.test(currentTitle);
 
             return {
                 ...segment,
@@ -61,7 +61,7 @@ const useVideoChapters = () => {
     const [duration, setDuration] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
-    
+
     // Track if editor has been initialized to prevent re-initialization on Safari metadata events
     const isInitializedRef = useRef<boolean>(false);
 
@@ -129,7 +129,7 @@ const useVideoChapters = () => {
                 setTrimEnd(video.duration);
                 return;
             }
-            
+
             setDuration(video.duration);
             setTrimEnd(video.duration);
 
@@ -211,10 +211,11 @@ const useVideoChapters = () => {
         };
 
         const handleSeeked = () => {
-            if (pendingSeekRef.current === null) return;
-            const time = pendingSeekRef.current;
+            // Prefer the intended seek target; never re-assign video.currentTime here
+            // (that can snap a paused seek back toward 0 on some browsers).
+            const time = pendingSeekRef.current !== null ? pendingSeekRef.current : video.currentTime;
             pendingSeekRef.current = null;
-            video.currentTime = time;
+            setCurrentTime(time);
         };
 
         const handlePlay = () => {
@@ -363,7 +364,7 @@ const useVideoChapters = () => {
     };
 
     // Play/pause video
-    const playPauseVideo = () => {
+    const _playPauseVideo = () => {
         const video = videoRef.current;
         if (!video) return;
 
@@ -436,12 +437,10 @@ const useVideoChapters = () => {
         // Track if the video was playing before seeking
         const wasPlaying = !video.paused;
 
-        // Update the video position
-        if (video.seeking) {
-            pendingSeekRef.current = time;
-        } else {
-            video.currentTime = time;
-        }
+        // Always gate timeupdate with pendingSeekRef so a late timeupdate cannot
+        // overwrite React state with a stale pre-seek position while paused.
+        pendingSeekRef.current = time;
+        video.currentTime = time;
         setCurrentTime(time);
 
         // Store the position in a global state accessible to iOS Safari
@@ -584,7 +583,9 @@ const useVideoChapters = () => {
 
                 // Log the update details
                 logger.debug(
-                    `Updating segments with action: ${actionType}, recordHistory: ${isSignificantChange ? 'true' : 'false'}`
+                    `Updating segments with action: ${actionType}, recordHistory: ${
+                        isSignificantChange ? 'true' : 'false'
+                    }`
                 );
 
                 // Renumber all segments to ensure proper chronological naming
@@ -795,7 +796,9 @@ const useVideoChapters = () => {
         if (historyPosition > 0) {
             const previousState = history[historyPosition - 1];
             logger.debug(
-                `** UNDO ** to position ${historyPosition - 1}, action: ${previousState.action}, segments: ${previousState.clipSegments.length}`
+                `** UNDO ** to position ${historyPosition - 1}, action: ${previousState.action}, segments: ${
+                    previousState.clipSegments.length
+                }`
             );
 
             // Log segment details to help debug
@@ -829,7 +832,9 @@ const useVideoChapters = () => {
         if (historyPosition < history.length - 1) {
             const nextState = history[historyPosition + 1];
             logger.debug(
-                `** REDO ** to position ${historyPosition + 1}, action: ${nextState.action}, segments: ${nextState.clipSegments.length}`
+                `** REDO ** to position ${historyPosition + 1}, action: ${nextState.action}, segments: ${
+                    nextState.clipSegments.length
+                }`
             );
 
             // Log segment details to help debug
@@ -864,7 +869,7 @@ const useVideoChapters = () => {
     };
 
     // Handle play/pause of the full video
-    const handlePlay = () => {
+    const _handlePlay = () => {
         const video = videoRef.current;
         if (!video) return;
 
@@ -981,7 +986,7 @@ const useVideoChapters = () => {
                 throw new Error(`Failed to save chapters: ${response.status}`);
             }
 
-            const result = await response.json();
+            const _result = await response.json();
 
             // Mark as saved - no unsaved changes
             setHasUnsavedChanges(false);

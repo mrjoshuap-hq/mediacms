@@ -26,6 +26,7 @@ from files.models import (
     Tag,
     VideoChapterData,
     VideoTrimRequest,
+    media_uid_shard_path,
 )
 from files.tests import create_account, create_media, fixture_path
 from files.tests.media_utils import IMAGE_JPG, SMALL_VIDEO
@@ -124,6 +125,12 @@ class NextStateTests(TestCase):
     @override_settings(PORTAL_WORKFLOW="public")
     def test_public_workflow_allows_users_any_state(self):
         self.assertEqual(methods.get_next_state(self.regular, "private", "public"), "public")
+
+    @override_settings(PORTAL_WORKFLOW="private_verified")
+    def test_private_verified_workflow_blocks_users_from_publishing(self):
+        self.assertEqual(methods.get_next_state(self.regular, "private", "public"), "private")
+        self.assertEqual(methods.get_next_state(self.regular, "private", "unlisted"), "unlisted")
+        self.assertEqual(methods.get_next_state(self.editor, "private", "public"), "public")
 
 
 class UserOrSessionTests(TestCase):
@@ -246,7 +253,9 @@ class RecommendedAndRelatedMediaTests(TestCase):
         self.assertEqual(methods.show_related_media(self.media), [])
 
     @override_settings(RELATED_MEDIA_STRATEGY="calculated")
-    def test_calculated_strategy_is_not_implemented_yet(self):
+    def test_calculated_strategy_returns_empty_until_implemented(self):
+        # Documented current behavior; warn-mode expectation lives in
+        # tests/unimplemented/test_stubbed_features.py.
         self.assertEqual(methods.show_related_media(self.media), [])
 
 
@@ -460,7 +469,8 @@ class CopyMediaTests(TestCase):
         self.assertTrue(copy.uploaded_poster)
         self.assertTrue(copy.uploaded_thumbnail)
         self.assertTrue(copy.sprites)
-        self.assertEqual(copy.hls_file, os.path.join(settings.HLS_DIR, copy.uid.hex, "master.m3u8"))
+        # even a legacy (unsharded) source is copied into the copy's own sharded tree
+        self.assertEqual(copy.hls_file, os.path.join(settings.HLS_DIR, media_uid_shard_path(copy.uid), "master.m3u8"))
         self.assertTrue(os.path.isfile(copy.hls_file))
 
 
@@ -514,6 +524,19 @@ class VideoChaptersAndOwnershipTests(TestCase):
         self.assertEqual(media.user, self.new_owner)
         self.assertEqual(list(MediaPermission.objects.filter(media=media).values_list("user", "owner_user")), [(self.viewer.id, self.new_owner.id)])
 
+    def test_change_owner_updates_listable_media_counts_for_both_users(self):
+        create_media(self.owner, title="kept by owner")
+        transferred = create_media(self.owner, title="transferred listable")
+        create_media(self.new_owner, title="already owned")
+
+        self.assertEqual(Media.objects.filter(user=self.owner, listable=True).count(), 2)
+        self.assertEqual(Media.objects.filter(user=self.new_owner, listable=True).count(), 1)
+
+        methods.change_media_owner(transferred.id, self.new_owner)
+
+        self.assertEqual(Media.objects.filter(user=self.owner, listable=True).count(), 1)
+        self.assertEqual(Media.objects.filter(user=self.new_owner, listable=True).count(), 2)
+
     def test_change_owner_of_missing_media_returns_none(self):
         self.assertIsNone(methods.change_media_owner(0, self.new_owner))
 
@@ -557,3 +580,17 @@ class AllowedTypeTests(TestCase):
     @override_settings(ALLOWED_MEDIA_UPLOAD_TYPES=["all"])
     def test_all_allows_anything(self):
         self.assertTrue(methods.is_media_allowed_type(Media(media_type="")))
+
+
+class InteractiveEmailConnectionTests(TestCase):
+    @override_settings(EMAIL_BACKEND="djcelery_email.backends.CeleryEmailBackend")
+    def test_celery_backend_is_replaced_with_smtp_for_interactive_sends(self):
+        connection = methods.get_interactive_email_connection()
+        self.assertEqual(connection.__class__.__module__, "django.core.mail.backends.smtp")
+        self.assertFalse(connection.fail_silently)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_non_celery_backend_is_left_unchanged(self):
+        connection = methods.get_interactive_email_connection()
+        self.assertEqual(connection.__class__.__module__, "django.core.mail.backends.locmem")
+        self.assertFalse(connection.fail_silently)

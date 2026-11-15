@@ -1,0 +1,9 @@
+---
+description: Prefer auth-identity skill for login and IdP work
+globs: identity_providers/**,saml_auth/**,templates/account/**
+alwaysApply: false
+---
+
+When editing auth or identity providers, read `skills/auth-identity/SKILL.md`.
+Never show client secrets or SP private keys in admin forms after save.
+Do not commit `deploy/docker/local_settings.py` (CSRF/hosts overrides stay local).

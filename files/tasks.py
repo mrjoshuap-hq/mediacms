@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from datetime import datetime, timedelta
 
+import m3u8
 from celery import Task
 from celery import shared_task as task
 from celery.signals import task_revoked
@@ -16,8 +17,9 @@ from django.core.cache import cache
 from django.core.files import File
 from django.db import DatabaseError
 from django.db.models import Q
+from django.utils import timezone
 
-from actions.models import USER_MEDIA_ACTIONS, MediaAction
+from actions.models import PUBLIC_USER_MEDIA_ACTIONS, MediaAction
 from users.models import User
 
 from .backends import FFmpegBackend
@@ -54,11 +56,11 @@ from .models import (
     TranscriptionRequest,
     VideoTrimRequest,
 )
-from .models.utils import PREVIEW_PROFILE_NAME
+from .models.utils import PREVIEW_PROFILE_NAME, media_uid_shard_path
 
 logger = get_task_logger(__name__)
 
-VALID_USER_ACTIONS = [action for action, name in USER_MEDIA_ACTIONS]
+VALID_USER_ACTIONS = [action for action, name in PUBLIC_USER_MEDIA_ACTIONS]
 
 ERRORS_LIST = [
     "Output file is empty, nothing was encoded",
@@ -213,7 +215,10 @@ def pre_trim_video_actions(media):
 
     if picked:
         # by calling encode will re-encode all. The logic is explained above...
-        logger.info(f"Encoding media {media.friendly_token} will have to be performed for all profiles")
+        logger.info(
+            "Encoding media will have to be performed for all profiles - friendly_token=%s",
+            media.friendly_token,
+        )
         media.encode()
 
     return True
@@ -225,7 +230,9 @@ def chunkize_media(self, friendly_token, profiles, force=True):
 
     profiles = [EncodeProfile.objects.get(id=profile) for profile in profiles]
     media = Media.objects.get(friendly_token=friendly_token)
-    cwd = os.path.dirname(os.path.realpath(media.media_file.path))
+    # abspath, not realpath: for a symlinked original the working directory (where ffmpeg
+    # writes chunks) must be the MediaCMS-side one, never the external archive's
+    cwd = os.path.dirname(os.path.abspath(media.media_file.path))
     file_name = media.media_file.path.split("/")[-1]
     random_prefix = produce_friendly_token()
     file_format = f"{random_prefix}_{file_name}"
@@ -254,7 +261,10 @@ def chunkize_media(self, friendly_token, profiles, force=True):
                 chunks.append(ch[0])
     if not chunks:
         # command completely failed to segment file.putting to normal encode
-        logger.info(f"Failed to break file {friendly_token} in chunks. Putting to normal encode queue")
+        logger.info(
+            "Failed to break file in chunks, using normal encode queue - friendly_token=%s",
+            friendly_token,
+        )
         for profile in profiles:
             if media.video_height and media.video_height < profile.resolution:
                 if profile.resolution not in settings.MINIMUM_RESOLUTIONS_TO_ENCODE:
@@ -301,7 +311,12 @@ def chunkize_media(self, friendly_token, profiles, force=True):
                 priority=priority,
             )
 
-    logger.info(f"got {len(chunks)} chunks and will encode to {to_profiles} profiles")
+    logger.info(
+        "File chunked successfully - friendly_token=%s, chunk_count=%s, profile_count=%s",
+        friendly_token,
+        len(chunks),
+        len(to_profiles),
+    )
     return True
 
 
@@ -309,16 +324,25 @@ class EncodingTask(Task):
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         # mainly used to run some post failure steps
         # we get here if a task is revoked
+        encoding_id = None
+        media_token = None
         try:
             if hasattr(self, "encoding"):
+                encoding_id = self.encoding.id
                 self.encoding.status = "fail"
                 self.encoding.save(update_fields=["status"])
                 kill_ffmpeg_process(self.encoding.temp_file)
                 kill_ffmpeg_process(self.encoding.chunk_file_path)
                 if hasattr(self.encoding, "media"):
+                    media_token = self.encoding.media.friendly_token
                     self.encoding.media.post_encode_actions()
-        except BaseException:
-            pass
+        except Exception:
+            logger.exception(
+                "Error in EncodingTask.on_failure handler - encoding_id=%s, media_token=%s, task_id=%s",
+                encoding_id,
+                media_token,
+                task_id,
+            )
         return False
 
 
@@ -340,12 +364,30 @@ def encode_media(
 ):
     """Encode a media to given profile, using ffmpeg, storing progress"""
 
-    logger.info(f"encode_media for {friendly_token}/{profile_id}/{encoding_id}/{force}/{chunk}")
+    logger.info(
+        "Starting encode_media task - friendly_token=%s, profile_id=%s, encoding_id=%s, force=%s, chunk=%s",
+        friendly_token,
+        profile_id,
+        encoding_id,
+        force,
+        chunk,
+    )
+    logger.debug(
+        "encode_media task details - chunk_file_path=%s, task_id=%s",
+        chunk_file_path,
+        self.request.id if hasattr(self.request, 'id') else None,
+    )
     # TODO: this is new behavior, check whether it performs well. Before that check it would end up saving the Encoding
     # at some point below. Now it exits the task. Could it be that before it would give it a chance to re-run? Or it was
     # not being used at all?
     if not Encoding.objects.filter(id=encoding_id).exists():
-        logger.info(f"Exiting for {friendly_token}/{profile_id}/{encoding_id}/{force} since encoding id not found")
+        logger.warning(
+            "Exiting encode_media task - encoding_id not found: %s (friendly_token=%s, profile_id=%s, force=%s)",
+            encoding_id,
+            friendly_token,
+            profile_id,
+            force,
+        )
         return False
 
     if self.request.id:
@@ -355,7 +397,31 @@ def encode_media(
     try:
         media = Media.objects.get(friendly_token=friendly_token)
         profile = EncodeProfile.objects.get(id=profile_id)
-    except BaseException:
+    except Media.DoesNotExist:
+        logger.error(
+            "Media not found for encoding - friendly_token=%s, profile_id=%s, encoding_id=%s",
+            friendly_token,
+            profile_id,
+            encoding_id,
+        )
+        Encoding.objects.filter(id=encoding_id).delete()
+        return False
+    except EncodeProfile.DoesNotExist:
+        logger.error(
+            "EncodeProfile not found for encoding - friendly_token=%s, profile_id=%s, encoding_id=%s",
+            friendly_token,
+            profile_id,
+            encoding_id,
+        )
+        Encoding.objects.filter(id=encoding_id).delete()
+        return False
+    except Exception:
+        logger.exception(
+            "Unexpected error retrieving media/profile for encoding - friendly_token=%s, profile_id=%s, encoding_id=%s",
+            friendly_token,
+            profile_id,
+            encoding_id,
+        )
         Encoding.objects.filter(id=encoding_id).delete()
         return False
 
@@ -377,7 +443,28 @@ def encode_media(
                     chunk=True,
                     chunk_file_path=chunk_file_path,
                 ).exclude(id=encoding_id).delete()
-            except BaseException:
+            except Encoding.DoesNotExist:
+                logger.info(
+                    "Encoding object not found, creating new - encoding_id=%s, friendly_token=%s, profile_id=%s, chunk_file_path=%s",
+                    encoding_id,
+                    friendly_token,
+                    profile_id,
+                    chunk_file_path,
+                )
+                encoding = Encoding(
+                    media=media,
+                    profile=profile,
+                    status="running",
+                    chunk=True,
+                    chunk_file_path=chunk_file_path,
+                )
+            except Exception:
+                logger.exception(
+                    "Error retrieving encoding for chunk - encoding_id=%s, friendly_token=%s, profile_id=%s",
+                    encoding_id,
+                    friendly_token,
+                    profile_id,
+                )
                 encoding = Encoding(
                     media=media,
                     profile=profile,
@@ -394,7 +481,21 @@ def encode_media(
                 encoding = Encoding.objects.get(id=encoding_id)
                 encoding.status = "running"
                 Encoding.objects.filter(media=media, profile=profile).exclude(id=encoding_id).delete()
-            except BaseException:
+            except Encoding.DoesNotExist:
+                logger.info(
+                    "Encoding object not found, creating new - encoding_id=%s, friendly_token=%s, profile_id=%s",
+                    encoding_id,
+                    friendly_token,
+                    profile_id,
+                )
+                encoding = Encoding(media=media, profile=profile, status="running")
+            except Exception:
+                logger.exception(
+                    "Error retrieving encoding - encoding_id=%s, friendly_token=%s, profile_id=%s",
+                    encoding_id,
+                    friendly_token,
+                    profile_id,
+                )
                 encoding = Encoding(media=media, profile=profile, status="running")
 
     if task_id:
@@ -439,6 +540,14 @@ def encode_media(
             chunk=chunk,
         )
         if not ffmpeg_commands:
+            logger.error(
+                "Failed to produce ffmpeg commands - encoding_id=%s, friendly_token=%s, profile_id=%s, resolution=%s, codec=%s",
+                encoding_id,
+                friendly_token,
+                profile_id,
+                profile.resolution,
+                profile.codec,
+            )
             encoding.status = "fail"
             encoding.save(update_fields=["status"])
             return False
@@ -469,8 +578,28 @@ def encode_media(
                             percent = duration * 100 / media.duration
                             if n_times % 60 == 0:
                                 encoding.progress = percent
-                                encoding.save(update_fields=["progress", "update_date"])
-                                logger.info(f"Saved {round(percent, 2)}")
+                                try:
+                                    encoding.save(update_fields=["progress", "update_date"])
+                                    logger.debug(
+                                        "Encoding progress - encoding_id=%s, friendly_token=%s, progress=%.2f%%",
+                                        encoding_id,
+                                        friendly_token,
+                                        percent,
+                                    )
+                                except DatabaseError:
+                                    logger.warning(
+                                        "Database error saving encoding progress - encoding_id=%s, friendly_token=%s, progress=%.2f%%",
+                                        encoding_id,
+                                        friendly_token,
+                                        percent,
+                                    )
+                                except Exception:
+                                    logger.exception(
+                                        "Unexpected error saving encoding progress - encoding_id=%s, friendly_token=%s, progress=%.2f%%",
+                                        encoding_id,
+                                        friendly_token,
+                                        percent,
+                                    )
                             n_times += 1
                     except DatabaseError:
                         # primary reason for this is that the encoding has been deleted, because
@@ -481,17 +610,35 @@ def encode_media(
                         return False
 
                     except StopIteration:
+                        logger.debug(
+                            "FFmpeg encoding iteration stopped - encoding_id=%s, friendly_token=%s",
+                            encoding_id,
+                            friendly_token,
+                        )
                         break
-                    except VideoEncodingError:
+                    except VideoEncodingError as e:
+                        logger.error(
+                            "Video encoding error - encoding_id=%s, friendly_token=%s, profile_id=%s, error=%s",
+                            encoding_id,
+                            friendly_token,
+                            profile_id,
+                            str(e),
+                        )
                         # ffmpeg error, or ffmpeg was killed
                         raise
 
             except Exception as e:
+                logger.exception(
+                    "Exception during FFmpeg encoding - encoding_id=%s, friendly_token=%s, profile_id=%s",
+                    encoding_id,
+                    friendly_token,
+                    profile_id,
+                )
                 try:
                     # output is empty, fail message is on the exception
                     output = e.message
                 except AttributeError:
-                    output = ""
+                    output = str(e) if e else ""
                 kill_ffmpeg_process(encoding.temp_file)
                 kill_ffmpeg_process(encoding.chunk_file_path)
                 encoding.logs = output
@@ -529,10 +676,36 @@ def encode_media(
 
         try:
             encoding.save(update_fields=["status", "logs", "progress", "total_run_time"])
+            if success:
+                logger.info(
+                    "Encoding completed successfully - encoding_id=%s, friendly_token=%s, profile_id=%s, chunk=%s",
+                    encoding_id,
+                    friendly_token,
+                    profile_id,
+                    chunk,
+                )
+            else:
+                logger.error(
+                    "Encoding failed - encoding_id=%s, friendly_token=%s, profile_id=%s, chunk=%s",
+                    encoding_id,
+                    friendly_token,
+                    profile_id,
+                    chunk,
+                )
         # this will raise a django.db.utils.DatabaseError error when task is revoked,
         # since we delete the encoding at that stage
-        except BaseException:
-            pass
+        except DatabaseError:
+            logger.warning(
+                "Database error saving encoding (task may have been revoked) - encoding_id=%s, friendly_token=%s",
+                encoding_id,
+                friendly_token,
+            )
+        except Exception:
+            logger.exception(
+                "Unexpected error saving encoding final status - encoding_id=%s, friendly_token=%s",
+                encoding_id,
+                friendly_token,
+            )
 
         return success
 
@@ -541,13 +714,28 @@ def encode_media(
 def whisper_transcribe(friendly_token, translate_to_english=False):
     try:
         media = Media.objects.get(friendly_token=friendly_token)
-    except:  # noqa
-        logger.info(f"failed to get media {friendly_token}")
+    except Media.DoesNotExist:
+        logger.warning(
+            "Media not found for transcription - friendly_token=%s, translate_to_english=%s",
+            friendly_token,
+            translate_to_english,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "Unexpected error retrieving media for transcription - friendly_token=%s, translate_to_english=%s",
+            friendly_token,
+            translate_to_english,
+        )
         return False
 
     request = TranscriptionRequest.objects.filter(media=media, status="pending", translate_to_english=translate_to_english).first()
     if not request:
-        logger.info(f"No pending transcription request for media {friendly_token}")
+        logger.info(
+            "No pending transcription request found - friendly_token=%s, translate_to_english=%s",
+            friendly_token,
+            translate_to_english,
+        )
         return False
 
     if translate_to_english:
@@ -559,7 +747,9 @@ def whisper_transcribe(friendly_token, translate_to_english=False):
         if not language:
             language = Language.objects.create(code="whisper", title="Transcription")
 
-    cwd = os.path.dirname(os.path.realpath(media.media_file.path))
+    # abspath, not realpath: for a symlinked original the working directory (where ffmpeg
+    # writes chunks) must be the MediaCMS-side one, never the external archive's
+    cwd = os.path.dirname(os.path.abspath(media.media_file.path))
     request.status = "running"
     request.save(update_fields=["status"])
 
@@ -577,7 +767,12 @@ def whisper_transcribe(friendly_token, translate_to_english=False):
         if translate_to_english:
             cmd += ["--task", "translate"]
 
-        logger.info(f"Whisper transcribe: ready to run command {cmd}")
+        logger.info(
+            "Whisper transcribe command ready - friendly_token=%s, translate_to_english=%s, model=%s",
+            friendly_token,
+            translate_to_english,
+            settings.WHISPER_MODEL,
+        )
 
         start_time = datetime.now()
         ret = run_command(cmd, cwd=cwd)  # noqa
@@ -607,7 +802,17 @@ def update_search_vector(friendly_token):
     try:
         media = Media.objects.get(friendly_token=friendly_token)
         media.update_search_vector()
-    except:  # noqa
+    except Media.DoesNotExist:
+        logger.warning(
+            "Media not found for search vector update - friendly_token=%s",
+            friendly_token,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "Error updating search vector - friendly_token=%s",
+            friendly_token,
+        )
         return False
 
     return True
@@ -619,8 +824,17 @@ def produce_sprite_from_video(friendly_token):
 
     try:
         media = Media.objects.get(friendly_token=friendly_token)
-    except BaseException:
-        logger.info(f"failed to get media with friendly_token {friendly_token}")
+    except Media.DoesNotExist:
+        logger.warning(
+            "Media not found for sprite generation - friendly_token=%s",
+            friendly_token,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "Unexpected error retrieving media for sprite generation - friendly_token=%s",
+            friendly_token,
+        )
         return False
 
     with tempfile.TemporaryDirectory(dir=settings.TEMP_DIRECTORY) as tmpdirname:
@@ -644,14 +858,151 @@ def produce_sprite_from_video(friendly_token):
                     media.sprites.save(content=myfile, name=get_file_name(media.media_file.path) + "sprites.jpg", save=False)
                     media.save(update_fields=["sprites"])
 
-        except Exception as e:
-            print(e)
+        except Exception:
+            logger.exception(
+                "Error producing sprite from video - friendly_token=%s",
+                friendly_token,
+            )
     return True
 
 
-@task(name="create_hls", queue="long_tasks")
-def create_hls(friendly_token):
-    """Creates HLS file for media, uses Bento4 mp4hls command"""
+HLS_LOCK_TIMEOUT = 120
+HLS_LOCK_RETRY_COUNTDOWN = 5
+HLS_LOCK_MAX_RETRIES = 60
+
+
+def _hls_lock_key(uid_hex):
+    return f"create_hls_lock_{uid_hex}"
+
+
+def _acquire_hls_lock(uid_hex):
+    return cache.add(_hls_lock_key(uid_hex), "1", timeout=HLS_LOCK_TIMEOUT)
+
+
+def _release_hls_lock(uid_hex):
+    cache.delete(_hls_lock_key(uid_hex))
+
+
+def _hls_variant_dir_name(resolution):
+    if resolution is None:
+        return "media-1"
+    return f"media-{resolution}"
+
+
+def _run_mp4hls(media_files, output_dir):
+    """Run Bento4 mp4hls; return True when master.m3u8 was produced."""
+    os.makedirs(os.path.dirname(output_dir), exist_ok=True)
+    cmd = [settings.MP4HLS_COMMAND, "--segment-duration=4", f"--output-dir={output_dir}", *media_files]
+    result = run_command(cmd)
+    master = os.path.join(output_dir, "master.m3u8")
+    if not os.path.exists(master):
+        logger.error("bento failed to produce master.m3u8: %s", result.get("error", ""))
+        return False
+    return True
+
+
+def _rewrite_master_variant_prefix(master_path, old_prefix, new_prefix):
+    with open(master_path, "r", encoding="utf-8") as handle:
+        content = handle.read()
+    content = content.replace(f"{old_prefix}/", f"{new_prefix}/")
+    with open(master_path, "w", encoding="utf-8") as handle:
+        handle.write(content)
+
+
+def _prepare_incremental_variant(temp_dir, resolution):
+    """Rename Bento's media-1 directory to a stable media-<resolution> name."""
+    variant_name = _hls_variant_dir_name(resolution)
+    media_dirs = sorted(name for name in os.listdir(temp_dir) if name.startswith("media-") and os.path.isdir(os.path.join(temp_dir, name)))
+    if not media_dirs:
+        logger.error("bento output missing media-* directory in %s", temp_dir)
+        return None
+
+    old_name = media_dirs[0]
+    old_path = os.path.join(temp_dir, old_name)
+    new_path = os.path.join(temp_dir, variant_name)
+    if old_name != variant_name:
+        if os.path.exists(new_path):
+            shutil.rmtree(new_path)
+        os.rename(old_path, new_path)
+        master = os.path.join(temp_dir, "master.m3u8")
+        if os.path.exists(master):
+            _rewrite_master_variant_prefix(master, old_name, variant_name)
+    return variant_name
+
+
+def _uri_belongs_to_variant(uri, variant_name):
+    return bool(uri) and (uri == variant_name or str(uri).startswith(f"{variant_name}/"))
+
+
+def _merge_master_playlist(permanent_master, incoming_master, variant_name):
+    """Replace any existing entries for variant_name with those from incoming_master."""
+    existing = m3u8.load(permanent_master)
+    incoming = m3u8.load(incoming_master)
+
+    existing.playlists[:] = [playlist for playlist in existing.playlists if not _uri_belongs_to_variant(playlist.uri, variant_name)]
+    existing.iframe_playlists[:] = [playlist for playlist in existing.iframe_playlists if not _uri_belongs_to_variant(getattr(playlist, "uri", None), variant_name)]
+
+    existing.playlists.extend(incoming.playlists)
+    existing.iframe_playlists.extend(incoming.iframe_playlists)
+
+    with open(permanent_master, "w", encoding="utf-8") as handle:
+        handle.write(existing.dumps())
+
+
+def hls_permanent_dir(uid):
+    """Directory holding a media's HLS tree: hls/aa/bb/<uid.hex>.
+
+    A media that already has an unsharded hls/<uid.hex> tree keeps writing there, so its
+    variants are merged into one master playlist instead of being split across layouts.
+    """
+    legacy_dir = os.path.join(settings.HLS_DIR, uid.hex)
+    if os.path.isdir(legacy_dir):
+        return legacy_dir
+    return os.path.join(settings.HLS_DIR, media_uid_shard_path(uid))
+
+
+def _install_incremental_hls(permanent_dir, temp_dir, variant_name):
+    """Copy one variant into the permanent HLS tree and merge master.m3u8."""
+    os.makedirs(permanent_dir, exist_ok=True)
+    src_variant = os.path.join(temp_dir, variant_name)
+    dst_variant = os.path.join(permanent_dir, variant_name)
+    if os.path.exists(dst_variant):
+        shutil.rmtree(dst_variant)
+    shutil.copytree(src_variant, dst_variant)
+
+    permanent_master = os.path.join(permanent_dir, "master.m3u8")
+    incoming_master = os.path.join(temp_dir, "master.m3u8")
+    if not os.path.exists(permanent_master):
+        shutil.copy2(incoming_master, permanent_master)
+    else:
+        _merge_master_playlist(permanent_master, incoming_master, variant_name)
+    return permanent_master
+
+
+def _install_full_hls(permanent_dir, temp_dir):
+    """Atomically replace the permanent HLS tree with a full Bento rebuild."""
+    parent = os.path.dirname(permanent_dir) or settings.HLS_DIR
+    os.makedirs(parent, exist_ok=True)
+    replace_dir = os.path.join(parent, f".{os.path.basename(permanent_dir)}.replace-{produce_friendly_token()}")
+    old_dir = os.path.join(parent, f".{os.path.basename(permanent_dir)}.old-{produce_friendly_token()}")
+
+    shutil.copytree(temp_dir, replace_dir)
+    if os.path.exists(permanent_dir):
+        os.rename(permanent_dir, old_dir)
+    os.rename(replace_dir, permanent_dir)
+    if os.path.exists(old_dir):
+        shutil.rmtree(old_dir, ignore_errors=True)
+    return os.path.join(permanent_dir, "master.m3u8")
+
+
+@task(name="create_hls", bind=True, queue="long_tasks", soft_time_limit=settings.CELERY_SOFT_TIME_LIMIT)
+def create_hls(self, friendly_token, encoding_id=None):
+    """Create or update HLS for media using Bento4 mp4hls.
+
+    When encoding_id is set, package only that encoding and merge it into the
+    existing HLS tree. When encoding_id is None, rebuild from all successful
+    h264 MP4 encodings (trim / migration / recovery).
+    """
 
     if not hasattr(settings, "MP4HLS_COMMAND"):
         logger.info("Bento4 mp4hls command is missing from configuration")
@@ -663,52 +1014,180 @@ def create_hls(friendly_token):
 
     try:
         media = Media.objects.get(friendly_token=friendly_token)
-    except BaseException:
-        logger.info(f"failed to get media with friendly_token {friendly_token}")
+    except Media.DoesNotExist:
+        logger.warning(
+            "Media not found for HLS creation - friendly_token=%s",
+            friendly_token,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "Unexpected error retrieving media for HLS creation - friendly_token=%s",
+            friendly_token,
+        )
         return False
 
-    p = media.uid.hex
-    output_dir = os.path.join(settings.HLS_DIR, p)
-    encodings = media.encodings.filter(profile__extension="mp4", status="success", chunk=False, profile__codec="h264")
+    uid_hex = media.uid.hex
+    permanent_dir = hls_permanent_dir(media.uid)
+    media_files = []
+    resolution = None
 
-    if encodings:
-        existing_output_dir = None
-        if os.path.exists(output_dir):
-            existing_output_dir = output_dir
-            output_dir = os.path.join(settings.HLS_DIR, p + produce_friendly_token())
-        files = [f.media_file.path for f in encodings if f.media_file]
-        cmd = [settings.MP4HLS_COMMAND, '--segment-duration=4', f'--output-dir={output_dir}', *files]
-        run_command(cmd)
+    if encoding_id is not None:
+        try:
+            encoding = Encoding.objects.select_related("profile").get(pk=encoding_id, media=media)
+        except Encoding.DoesNotExist:
+            logger.info(
+                "Encoding not found for HLS creation - encoding_id=%s, friendly_token=%s",
+                encoding_id,
+                friendly_token,
+            )
+            return False
+        if encoding.status != "success" or encoding.chunk or encoding.profile.extension != "mp4" or encoding.profile.codec != "h264" or not encoding.media_file:
+            logger.info(
+                "Encoding not ready for HLS packaging - encoding_id=%s, friendly_token=%s",
+                encoding_id,
+                friendly_token,
+            )
+            return False
+        media_files = [encoding.media_file.path]
+        resolution = encoding.profile.resolution
+    else:
+        encodings = media.encodings.filter(profile__extension="mp4", status="success", chunk=False, profile__codec="h264")
+        media_files = [encoding.media_file.path for encoding in encodings if encoding.media_file]
+        if not media_files:
+            return True
 
-        if existing_output_dir:
-            # override content with -T !
-            cmd = ["cp", "-rT", output_dir, existing_output_dir]
-            run_command(cmd)
+    with tempfile.TemporaryDirectory(dir=settings.TEMP_DIRECTORY) as temp_parent:
+        temp_dir = os.path.join(temp_parent, "hls-out")
+        if not _run_mp4hls(media_files, temp_dir):
+            return False
 
-            try:
-                shutil.rmtree(output_dir)
-            except:  # noqa
-                # this was breaking in some cases where it was already deleted
-                # because create_hls was running multiple times
-                pass
-            output_dir = existing_output_dir
-        pp = os.path.join(output_dir, "master.m3u8")
-        if os.path.exists(pp):
-            if media.hls_file != pp:
-                Media.objects.filter(pk=media.pk).update(hls_file=pp)
+        variant_name = None
+        if encoding_id is not None:
+            variant_name = _prepare_incremental_variant(temp_dir, resolution)
+            if not variant_name:
+                return False
+
+        if not _acquire_hls_lock(uid_hex):
+            raise self.retry(countdown=HLS_LOCK_RETRY_COUNTDOWN, max_retries=HLS_LOCK_MAX_RETRIES)
+
+        try:
+            if encoding_id is not None:
+                master_path = _install_incremental_hls(permanent_dir, temp_dir, variant_name)
+            else:
+                master_path = _install_full_hls(permanent_dir, temp_dir)
+        finally:
+            _release_hls_lock(uid_hex)
+
+    if os.path.exists(master_path) and media.hls_file != master_path:
+        Media.objects.filter(pk=media.pk).update(hls_file=master_path)
+        logger.info(
+            "HLS playlist updated - friendly_token=%s, encoding_id=%s, master=%s",
+            friendly_token,
+            encoding_id,
+            master_path,
+        )
     return True
 
 
 @task(name="media_init", queue="short_tasks")
 def media_init(friendly_token):
+    logger.info(
+        "Starting media initialization - friendly_token=%s",
+        friendly_token,
+    )
     try:
         media = Media.objects.get(friendly_token=friendly_token)
-    except:  # noqa
-        logger.info("failed to get media with friendly_token %s" % friendly_token)
+    except Media.DoesNotExist:
+        logger.warning(
+            "Media not found for initialization - friendly_token=%s",
+            friendly_token,
+        )
         return False
-    media.media_init()
+    except Exception:
+        logger.exception(
+            "Unexpected error retrieving media for initialization - friendly_token=%s",
+            friendly_token,
+        )
+        return False
+
+    try:
+        media.media_init()
+        logger.info(
+            "Media initialization completed successfully - friendly_token=%s, media_type=%s",
+            friendly_token,
+            media.media_type,
+        )
+    except Exception:
+        logger.exception(
+            "Error during media initialization - friendly_token=%s",
+            friendly_token,
+        )
+        return False
 
     return True
+
+
+@task(name="refresh_media_metadata", queue="long_tasks")
+def refresh_media_metadata(friendly_token, user_id=None):
+    """Fill missing media/encoding metadata and record integrity audits."""
+    from files.metadata_integrity import refresh_and_check_media
+
+    try:
+        media = Media.objects.get(friendly_token=friendly_token)
+    except Media.DoesNotExist:
+        logger.info("failed to get media with friendly_token %s" % friendly_token)
+        return False
+
+    user = None
+    if user_id:
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            user = None
+
+    refresh_and_check_media(media, user=user)
+    return True
+
+
+# Moving a library is disk bound: keep each worker to a gentle pace and run it off-peak
+PATH_MIGRATE_RATE_LIMIT = "30/m"
+
+
+def _task_user(user_id):
+    if not user_id:
+        return None
+    return User.objects.filter(pk=user_id).first()
+
+
+@task(name="migrate_media_paths", queue="long_tasks", rate_limit=PATH_MIGRATE_RATE_LIMIT)
+def migrate_media_paths_task(friendly_token, user_id=None):
+    """Move one media's files to the sharded layout (verified before anything old is deleted).
+
+    Returns the PathMigrationResult as a dict; a failure never raises so one bad media
+    cannot stop the rest of a bulk run.
+    """
+    from files.path_migrate import STATUS_FAILED, migrate_media_paths
+
+    media = Media.objects.filter(friendly_token=friendly_token).first()
+    if media is None:
+        logger.info("path migrate: media not found - friendly_token=%s", friendly_token)
+        return {"friendly_token": friendly_token, "status": STATUS_FAILED, "reason": "media not found", "moved": 0, "removed": 0}
+
+    result = migrate_media_paths(media, user=_task_user(user_id)).as_dict()
+    result["friendly_token"] = friendly_token
+    return result
+
+
+@task(name="migrate_media_paths_bulk", queue="short_tasks")
+def migrate_media_paths_bulk(friendly_tokens, user_id=None):
+    """Fan a selection out into one migrate_media_paths task per media."""
+    queued = 0
+    for friendly_token in dict.fromkeys(friendly_tokens or []):
+        migrate_media_paths_task.delay(friendly_token, user_id)
+        queued += 1
+    logger.info("path migrate: queued %s media - user_id=%s", queued, user_id)
+    return {"queued": queued}
 
 
 @task(name="check_running_states", queue="short_tasks")
@@ -828,7 +1307,16 @@ def clear_sessions():
 
         engine = import_module(settings.SESSION_ENGINE)
         engine.SessionStore.clear_expired()
-    except BaseException:
+        logger.debug("Successfully cleared expired sessions")
+    except ImportError as e:
+        logger.error(
+            "Failed to import session engine - SESSION_ENGINE=%s, error=%s",
+            getattr(settings, "SESSION_ENGINE", "unknown"),
+            str(e),
+        )
+        return False
+    except Exception:
+        logger.exception("Unexpected error clearing expired sessions")
         return False
     return True
 
@@ -842,7 +1330,19 @@ def save_user_action(user_or_session, friendly_token=None, action="watch", extra
 
     try:
         media = Media.objects.get(friendly_token=friendly_token)
-    except BaseException:
+    except Media.DoesNotExist:
+        logger.warning(
+            "Media not found for user action - friendly_token=%s, action=%s",
+            friendly_token,
+            action,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "Unexpected error retrieving media for user action - friendly_token=%s, action=%s",
+            friendly_token,
+            action,
+        )
         return False
 
     user = user_or_session.get("user_id")
@@ -852,7 +1352,21 @@ def save_user_action(user_or_session, friendly_token=None, action="watch", extra
     if user:
         try:
             user = User.objects.get(id=user)
-        except BaseException:
+        except User.DoesNotExist:
+            logger.warning(
+                "User not found for user action - user_id=%s, friendly_token=%s, action=%s",
+                user,
+                friendly_token,
+                action,
+            )
+            return False
+        except Exception:
+            logger.exception(
+                "Unexpected error retrieving user for action - user_id=%s, friendly_token=%s, action=%s",
+                user,
+                friendly_token,
+                action,
+            )
             return False
 
     if not (user or session_key):
@@ -877,8 +1391,20 @@ def save_user_action(user_or_session, friendly_token=None, action="watch", extra
         try:
             score = extra_info.get("score")
             rating_category = extra_info.get("category_id")
-        except BaseException:
-            # TODO: better error handling?
+        except AttributeError:
+            logger.warning(
+                "Missing extra_info for rating action - friendly_token=%s, user_id=%s, extra_info=%s",
+                friendly_token,
+                user.id if user else None,
+                extra_info,
+            )
+            return False
+        except Exception:
+            logger.exception(
+                "Error extracting rating info - friendly_token=%s, user_id=%s",
+                friendly_token,
+                user.id if user else None,
+            )
             return False
         try:
             rating = Rating.objects.filter(user=user, media=media, rating_category_id=rating_category).first()
@@ -893,8 +1419,13 @@ def save_user_action(user_or_session, friendly_token=None, action="watch", extra
                     score=score,
                 )
         except Exception:
-            # TODO: more specific handling, for errors in score, or
-            # rating_category?
+            logger.exception(
+                "Error saving rating - friendly_token=%s, user_id=%s, score=%s, category_id=%s",
+                friendly_token,
+                user.id if user else None,
+                score,
+                rating_category,
+            )
             return False
 
     ma = MediaAction(
@@ -969,7 +1500,7 @@ def get_list_of_popular_media():
     media_ids.extend([a[0] for a in y])
     media_ids = list(set(media_ids))
     cache.set("popular_media_ids", media_ids, 60 * 60 * 12)
-    logger.info("saved popular media ids")
+    logger.debug("Popular media IDs cached - count=%s", len(media_ids))
 
     return True
 
@@ -998,7 +1529,7 @@ def update_listings_thumbnails():
             object.listings_thumbnail = None
             object.save(update_fields=["listings_thumbnail"])
             cleared += 1
-    logger.info(f"updated {saved} categories, cleared {cleared}")
+    logger.debug("Categories thumbnails updated - saved=%s, cleared=%s", saved, cleared)
 
     # Tags
     used_media = []
@@ -1016,7 +1547,7 @@ def update_listings_thumbnails():
             object.listings_thumbnail = None
             object.save(update_fields=["listings_thumbnail"])
             cleared += 1
-    logger.info(f"updated {saved} tags, cleared {cleared}")
+    logger.debug("Tags thumbnails updated - saved=%s, cleared=%s", saved, cleared)
 
     return True
 
@@ -1030,8 +1561,12 @@ def task_sent_handler(sender=None, headers=None, body=None, **kwargs):
     # Also, removing the Encoding object,
     # since the task that would prepare it was killed
     # Maybe add a killed state for Encoding objects
+    uid = None
     try:
-        uid = kwargs["request"].task_id
+        request = kwargs.get("request")
+        if request is None:
+            return True
+        uid = getattr(request, "task_id", None)
         if uid:
             encoding = Encoding.objects.get(task_id=uid)
             encoding.delete()
@@ -1039,8 +1574,14 @@ def task_sent_handler(sender=None, headers=None, body=None, **kwargs):
             if encoding.temp_file:
                 kill_ffmpeg_process(encoding.temp_file)
 
-    except BaseException:
-        pass
+    except Encoding.DoesNotExist:
+        logger.debug("Encoding already deleted for revoked task - task_id=%s", uid)
+    except Exception as e:
+        logger.warning(
+            "Error handling revoked task - task_id=%s, error=%s",
+            uid,
+            str(e),
+        )
 
     return True
 
@@ -1071,11 +1612,17 @@ def post_trim_action(friendly_token):
     Returns:
         bool: True if successful, False otherwise
     """
-    logger.info(f"Post trim action for {friendly_token}")
+    logger.info(
+        "Post trim action started - friendly_token=%s",
+        friendly_token,
+    )
     try:
         media = Media.objects.get(friendly_token=friendly_token)
     except Media.DoesNotExist:
-        logger.info(f"Media with friendly token {friendly_token} not found")
+        logger.warning(
+            "Media not found for post trim action - friendly_token=%s",
+            friendly_token,
+        )
         return False
 
     media.set_media_type()
@@ -1111,7 +1658,10 @@ def video_trim_task(self, trim_request_id):
     try:
         trim_request = VideoTrimRequest.objects.get(id=trim_request_id)
     except VideoTrimRequest.DoesNotExist:
-        logger.info(f"VideoTrimRequest with ID {trim_request_id} not found")
+        logger.warning(
+            "VideoTrimRequest not found - trim_request_id=%s",
+            trim_request_id,
+        )
         return False
 
     trim_request.status = "running"
@@ -1149,7 +1699,10 @@ def video_trim_task(self, trim_request_id):
 
         original_trim_result = trim_video_method(target_media.media_file.path, timestamps_original)
         if not original_trim_result:
-            logger.info(f"Failed to trim original file for media {target_media.friendly_token}")
+            logger.error(
+                "Failed to trim original file - friendly_token=%s",
+                target_media.friendly_token,
+            )
 
         deleted_encodings = handle_pending_running_encodings(target_media)
         # the following could be un-necessary, read commend in pre_trim_video_actions to see why
@@ -1157,7 +1710,11 @@ def video_trim_task(self, trim_request_id):
         for encoding in encodings:
             trim_result = trim_video_method(encoding.media_file.path, timestamps_encodings)
             if not trim_result:
-                logger.info(f"Failed to trim encoding {encoding.id} for media {target_media.friendly_token}")
+                logger.error(
+                    "Failed to trim encoding - encoding_id=%s, friendly_token=%s",
+                    encoding.id,
+                    target_media.friendly_token,
+                )
                 encoding.delete()
 
         pre_trim_video_actions(target_media)
@@ -1179,7 +1736,11 @@ def video_trim_task(self, trim_request_id):
             for encoding in encodings:
                 trim_result = trim_video_method(encoding.media_file.path, [timestamp])
                 if not trim_result:
-                    logger.info(f"Failed to trim encoding {encoding.id} for media {target_media.friendly_token}")
+                    logger.error(
+                        "Failed to trim encoding - encoding_id=%s, friendly_token=%s",
+                        encoding.id,
+                        target_media.friendly_token,
+                    )
                     encoding.delete()
 
             pre_trim_video_actions(target_media)
@@ -1192,10 +1753,139 @@ def video_trim_task(self, trim_request_id):
     return True
 
 
-# TODO LIST
-# 1 chunks are deleted from original server when file is fully encoded.
-# however need to enter this logic in cases of fail as well
-# 2 script to delete chunks in fail status
-# (and check for their encdings, and delete them as well, along with
-# all chunks)
-# 3 beat task, remove chunks
+def _rm_aged_encoding_chunk_file(path, cutoff):
+    """Delete a source encoding segment if it exists and its mtime is before cutoff."""
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.get_current_timezone())
+        if mtime > cutoff:
+            return False
+        return rm_file(path)
+    except OSError:
+        return False
+
+
+def _delete_unreferenced_chunks_info_files(chunks_info, cutoff):
+    """Remove source .mkv paths listed in chunks_info when nothing references it."""
+    if not chunks_info:
+        return
+    if Encoding.objects.filter(chunks_info=chunks_info).exists():
+        return
+    try:
+        for chunk_path in json.loads(chunks_info).keys():
+            _rm_aged_encoding_chunk_file(chunk_path, cutoff)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pass
+
+
+def _referenced_encoding_chunk_paths():
+    """Paths still pointed to by Encoding.chunk_file_path or chunks_info JSON keys."""
+    referenced = set()
+    for enc in Encoding.objects.exclude(chunk_file_path="").only("chunk_file_path"):
+        referenced.add(enc.chunk_file_path)
+    for chunks_info in Encoding.objects.exclude(chunks_info="").values_list("chunks_info", flat=True).distinct():
+        try:
+            referenced.update(json.loads(chunks_info).keys())
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+    return referenced
+
+
+@task(name="cleanup_encoding_chunks", queue="short_tasks")
+def cleanup_encoding_chunks():
+    """Remove stuck chunk Encoding rows and orphan source .mkv segment files.
+
+    Source segments are shared across EncodeProfiles. Files are only deleted when
+    no Encoding still references them via chunks_info / chunk_file_path and they
+    are older than ENCODING_CHUNKS_RETENTION_HOURS.
+    """
+    retention_hours = getattr(settings, "ENCODING_CHUNKS_RETENTION_HOURS", 24)
+    cutoff = timezone.now() - timedelta(hours=retention_hours)
+    deleted_chunks_infos = set()
+
+    # 1. Leftover chunk rows when a terminal non-chunk Encoding already exists
+    terminals = Encoding.objects.filter(chunk=False, status__in=["fail", "success"]).only("id", "media_id", "profile_id")
+    for terminal in terminals.iterator():
+        leftovers = Encoding.objects.filter(media_id=terminal.media_id, profile_id=terminal.profile_id, chunk=True)
+        for chunks_info in leftovers.exclude(chunks_info="").values_list("chunks_info", flat=True).distinct():
+            deleted_chunks_infos.add(chunks_info)
+        leftovers.delete()
+
+    for chunks_info in deleted_chunks_infos:
+        _delete_unreferenced_chunks_info_files(chunks_info, cutoff)
+
+    # 2. Aged failed chunk groups that never collapsed to a non-chunk Encoding
+    #    (e.g. historical fail-handler crashes on empty media_file.path)
+    group_values = Encoding.objects.filter(chunk=True).values("media_id", "profile_id", "chunks_info").distinct()
+    for group in group_values:
+        qs = Encoding.objects.filter(
+            media_id=group["media_id"],
+            profile_id=group["profile_id"],
+            chunks_info=group["chunks_info"],
+            chunk=True,
+        )
+        if not qs.exists():
+            continue
+        if qs.filter(status__in=["pending", "running"]).exists():
+            continue
+        if not qs.filter(status="fail").exists():
+            continue
+        latest = qs.order_by("-update_date").first()
+        if latest.update_date > cutoff:
+            continue
+        if Encoding.objects.filter(media_id=group["media_id"], profile_id=group["profile_id"], chunk=False, status__in=["fail", "success"]).exists():
+            # covered by step 1 on a later pass; delete leftovers now
+            chunks_info = group["chunks_info"]
+            qs.delete()
+            _delete_unreferenced_chunks_info_files(chunks_info, cutoff)
+            continue
+
+        chunks = list(qs.order_by("add_date"))
+        chunks_paths = [c.media_file.path for c in chunks if c.media_file]
+        all_logs = "\n".join([c.logs for c in chunks])
+        workers = list(set([c.worker for c in chunks]))
+        start_date = min([c.add_date for c in chunks])
+        end_date = max([c.update_date for c in chunks])
+        chunks_info = group["chunks_info"]
+
+        encoding = Encoding(
+            media_id=group["media_id"],
+            profile_id=group["profile_id"],
+            status="fail",
+            progress=100,
+            logs=f"{chunks_paths}\n{all_logs}",
+            worker=json.dumps({"workers": workers}),
+            total_run_time=(end_date - start_date).seconds,
+        )
+        encoding.save()
+        Encoding.objects.filter(
+            media_id=group["media_id"],
+            profile_id=group["profile_id"],
+            chunk=True,
+        ).exclude(id=encoding.id).delete()
+        _delete_unreferenced_chunks_info_files(chunks_info, cutoff)
+
+    # 3. Filesystem sweep: aged segment-named .mkv files with no DB reference
+    referenced = _referenced_encoding_chunk_paths()
+    original_root = os.path.join(settings.MEDIA_ROOT, settings.MEDIA_UPLOAD_DIR)
+    segment_name = re.compile(r"^\d{2}_.+\.mkv$")
+    removed_files = 0
+    if os.path.isdir(original_root):
+        for root, _dirs, files in os.walk(original_root):
+            for name in files:
+                if not segment_name.match(name):
+                    continue
+                path = os.path.join(root, name)
+                if path in referenced:
+                    continue
+                if _rm_aged_encoding_chunk_file(path, cutoff):
+                    removed_files += 1
+
+    logger.info(
+        "cleanup_encoding_chunks finished - retention_hours=%s, leftover_chunk_groups=%s, removed_orphan_files=%s",
+        retention_hours,
+        len(deleted_chunks_infos),
+        removed_files,
+    )
+    return True

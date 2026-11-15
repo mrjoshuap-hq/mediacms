@@ -1,0 +1,98 @@
+<!-- curated fork release notes; edit this file, not docs/en/reference/whats-new.md -->
+# Fork changes since upstream MediaCMS 9.4.0
+
+These notes cover the fork beta line (`mediacms-next`) relative to upstream `main` at MediaCMS 9.4.0. Entries use the same Conventional Commits types as `.releaserc.json`: **Features**, **Bug Fixes**, **Documentation**, **Refactors**.
+
+For an at-a-glance comparison of upstream ≤v9 with fork 10.0.0 **stable** and **beta**, plus upgrade tips (`manage.py`, Make, admin portal), start at [Releases](../releases/index.md).
+
+See [Site health and database](../guides/admin/site.md), [Admin portal map](../guides/admin/portal-map.md), and [Fork beta and stable images](../getting-started/install.md#fork-beta-and-stable-images-ghcr).
+
+## Upgrade impact
+
+Use this table when you update a portal. It lists extra steps beyond pulling the image and running the usual `migrations` container. A blank cell means no extra step for that row.
+
+| Change | Models / DB migrations | Frontend build | Language rebuild | Restart | Notes |
+|--------|------------------------|----------------|------------------|---------|-------|
+| Permission ACL alignment | No | Yes (`make build-frontend`) | No | web (and Celery if workers cache settings) | Review [Permission access changes](../guides/admin/permissions-changes.md) before you upgrade |
+| Password-protected media | Yes (`Media.password` and related) | Yes | Yes if you ship new UI strings | web, celery_worker | Session unlock API: `POST /api/v1/media/{token}/unlock` |
+| Site upgrade tooling | Yes (`UpgradeDecision` and related) | No | No | web | See [Site upgrade](../guides/admin/site-upgrade.md) |
+| Admin portal dashboards and health | Yes when new admin models land | No | Optional | web | Collect static if you do not use the image static pipeline |
+| Logging / trusted proxies settings | No | No | No | web, celery_worker, celery_beat | Set `TRUSTED_PROXIES` / log settings in `local_settings.py` |
+| HLS / encoding task changes | No (unless a new setting is required) | No | No | celery_worker, celery_beat | Confirm beat schedule for cleanup tasks |
+| Sharded media paths, path migrate, and filesystem library sync | Yes (`files`, `actions`, `migrationservice` migrations) | Yes (`make build-frontend`) | Yes (`process_translations`) | web, celery_worker, celery_beat | Custom nginx needs the `thumbnails`, `categories`, and `subtitles` blocks. Optional bind mount under `FILESYSTEM_IMPORT_ROOT`. Existing media stays on legacy paths until a manager runs **Migrate paths**. See [Manage media](../guides/operator/manage-media.md#move-media-to-the-sharded-path-layout) and [Content migration](../guides/admin/content-migration.md#filesystem-library) |
+| Translation-only fixes | No | Yes when React strings change | Yes (`process_translations`) | web after static copy | Django template strings do not need a frontend build |
+
+Column meanings:
+
+- **Models / DB migrations** — Django model change and a migration that `migrate` must apply.
+- **Frontend build** — Run `make build-frontend` (or the image equivalent) so `static/js` matches the React sources.
+- **Language rebuild** — Add strings to `files/frontend_translations/en.py`, run `python manage.py process_translations`, then translate other languages.
+- **Restart** — Services that must reload Python or Celery code after the update.
+
+When you add a feature or fix that needs an extra step, add a row here in the same pull request.
+
+## Features
+
+* **admin:** workflow sidebar with Moderation, Library, Processing, People, Integrations, and Site groups
+* **admin:** dashboard overview pages with cached statistics and **Refresh stats**
+* **admin:** Site Health, Configuration, System, and Database pages
+* **admin:** database backup download and restore upload for superusers
+* **admin:** redacted support bundle on Get Support
+* **admin:** Library and Engagement overview dashboards
+* **admin:** grouped Actions dropdown choices and object change-form actions
+* **admin:** optional changelist columns, icons, fieldsets, and related displays
+* **admin:** navbar language chooser (Jazzmin language chooser)
+* **integrity:** media and metadata integrity checks in Site Health and Library
+* **actions:** MediaAction indexing and moderation audit support
+* **upgrade:** `upgrade_site` command, UpgradeDecision model, and upgrade audit helpers
+* **dev:** `populate_fake_media` command with locale and timestamp options; `ALLOW_POPULATE_FAKE_MEDIA` guard
+* **docs:** MkDocs Material documentation (roles, guides, scenarios) served at `/documentation/`
+* **ci:** mike versioned docs deploy on GitHub Pages (`dev` / `beta` / `latest`)
+* **release:** GHCR date-stamped `:beta` and `:stable` images from `version/FORK_VERSION`
+* **settings:** `ACCOUNT_LOGIN_BY_CODE_ENABLED` and `ALLOW_POPULATE_FAKE_MEDIA`
+* **logging:** structured app logging with `LOGLEVEL`, optional SQL debug via `ENABLE_SQL_DEBUG_LOGGING`, and per-app loggers
+* **logging:** failed-login warnings with client IP for django-allauth and API token login
+* **logging:** operational logs for admin database backup/restore, support bundle, object actions, and related management commands
+* **proxy:** `TRUSTED_PROXIES` with `ProxyAwareMiddleware` and `get_client_ip` (off when the list is empty)
+* **settings:** `CAN_SEE_MEMBERS_PAGE = "anonymous"` for members nav and author search without sign-in
+* **email:** `EMAIL_TIMEOUT` and synchronous interactive mail for contact, profile contact, and auth
+* **search:** CJK-aware media search via `prepare_media_search_filter` (icontains for CJK tokens)
+* **media:** lazy playlist membership for Save popup (`GET /api/v1/media/{token}/playlists`)
+* **encoding:** `cleanup_encoding_chunks` beat task and `ENCODING_CHUNKS_RETENTION_HOURS` for orphan chunk cleanup
+* **playlists:** annotated media counts/thumbnails aligned with detail visibility; delete confirmation UI
+* **tags:** alphabetical tag/category lists and M2M search-vector/count sync (#1207)
+* **hls:** incremental HLS packaging with Redis lock and optional full rebuild
+* **upload:** FineUploader and API accept optional title, description, and related metadata on create
+* **player:** soft-nav next/prev keeps fullscreen and continues autoplay
+* **media:** session unlock for password-protected media (`POST /api/v1/media/{token}/unlock`) with hashed `Media.password`
+* **paths:** new media files use sharded `<kind>/<aa>/<bb>/<uid>/…` paths (originals, encodings, HLS, thumbnails, subtitles, categories) with no username or client file name; legacy paths keep working
+* **paths:** gated path migrate for one or many media (Manage media **Migrate paths**, `/api/v1/manage_media/<token>/migrate_paths`), copy and verify before old files are deleted; audit action `path_migrated`
+* **migrations:** **Filesystem library** source that syncs a mounted library under `FILESYSTEM_IMPORT_ROOT`, with required owner, `ingest` or `preserve` storage, sidecar captions, and folder categories
+* **migrations:** re-runnable library sync that skips imported files, and prunes media whose file is gone only when it has no playable encodings; audit actions `fs_imported`, `fs_original_gone`, `fs_pruned`
+
+## Bug Fixes
+
+* **permissions:** align global roles, pending writes, MediaPermission/RBAC delete and state rules, manage users (managers only), and frontend `can.*` flags with the roles and permissions guides; see [Permission access changes](../guides/admin/permissions-changes.md) and the **Upgrade impact** table above
+* **docs:** publish mike docs through the GitHub Pages Actions deploy path
+* **i18n:** German translation additions and corrections (#1622)
+* **templates:** default context keys for permissions, media, and current site to avoid AttributeError log floods
+* **logging:** skip model log handlers on fixture/raw loads so admin database restore is not interrupted
+* **sidebar:** light Home icon when the path is `/` by normalizing trailing slashes on nav URLs
+* **player:** desktop chapters overlay opens on click (#1453)
+* **contact:** surface SMTP failures instead of silent success on contact and profile contact forms
+* **review:** treat multipart `result="false"` as unreview and keep listable in sync (#1275/#1280)
+
+## Documentation
+
+* **admin:** permission access-change table for the v10 beta role and ACL alignment
+* **ops:** Upgrade impact table for migrations, frontend builds, language rebuilds, and restarts
+* **ops:** known-issue note for amd64 FFmpeg/Bento4 in Docker builds on arm64 (Apple Silicon `InvalidBaseImagePlatform`)
+* **admin:** admin portal guides for site, moderation, processing, people, integrations, and site upgrade
+* **ops:** Docker upgrade checklist and maintenance backup notes (#1562, #1564)
+* **meta:** AI disclosure attestation on pull request and issue templates (#1640)
+* **settings:** catalog and deploy notes for logging and trusted reverse-proxy settings
+* **tests:** backend `@unimplemented` warn-mode helper, coverage matrix, and gap-fill for playlist membership, review gate, and admin media actions
+
+## Refactors
+
+* **admin:** statistics calculation and admin import organization cleanups

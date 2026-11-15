@@ -17,6 +17,7 @@ from .providers import get_provider_class
 logger = logging.getLogger(__name__)
 
 PROVIDERS = (
+    ("filesystem", "Filesystem"),
     ("kaltura", "Kaltura"),
     ("panopto", "Panopto"),
     ("youtube", "YouTube"),
@@ -43,6 +44,10 @@ RECORD_STATUS = (
     ("failed", "Failed"),
     ("skipped", "Skipped"),
 )
+
+# MigrationRecord.log prefixes the filesystem reconcile writes, and counted_totals reads back
+FS_PRUNED_MARKER = "fs_pruned"
+FS_ORIGINAL_GONE_MARKER = "fs_original_gone"
 
 ENCRYPTED_PREFIX = "enc::"
 
@@ -177,6 +182,15 @@ class MigrationService(models.Model):
             suffix = suffixes.get(row["status"])
             if suffix:
                 totals[f"{row['object_type']}_{suffix}"] = row["number"]
+
+        if self.provider == "filesystem":
+            # derived from the rows like the rest, never incremented: a pruned item is kept as
+            # a skipped row so the audit trail outlives the Media it describes
+            media = MigrationRecord.objects.filter(service=self, object_type="media")
+            pruned = media.filter(status="skipped", log__startswith=FS_PRUNED_MARKER).count()
+            totals["media_pruned"] = pruned
+            totals["media_skipped"] = max(0, totals.get("media_skipped", 0) - pruned)
+            totals["media_original_gone"] = media.filter(status="success", log__startswith=FS_ORIGINAL_GONE_MARKER).count()
         return totals
 
 

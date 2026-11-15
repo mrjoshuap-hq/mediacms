@@ -161,5 +161,42 @@ describe('utils/settings', () => {
             expect(cfg1.can.usersNeedsToBeApproved).toBe(false);
             expect(cfg1.can.readComment).toBe(false);
         });
+
+        test('Upload and comment affordances stay false when backend denies them', () => {
+            const cfg = memberConfig({
+                is: { anonymous: false },
+                can: {
+                    addMedia: false,
+                    addComment: false,
+                    manageMedia: false,
+                    manageUsers: false,
+                    manageComments: false,
+                },
+            });
+            expect(cfg.can.addMedia).toBe(false);
+            expect(cfg.can.addComment).toBe(false);
+            expect(cfg.can.manageMedia).toBe(false);
+            expect(cfg.can.manageUsers).toBe(false);
+            expect(cfg.can.manageComments).toBe(false);
+        });
+
+        test('Anonymous users do not inherit manage or upload flags from a stale payload', () => {
+            const cfg = memberConfig({
+                is: { anonymous: true, admin: true },
+                can: {
+                    addMedia: true,
+                    manageMedia: true,
+                    manageUsers: true,
+                    manageComments: true,
+                    addComment: true,
+                },
+            });
+            expect(cfg.is.anonymous).toBe(true);
+            expect(cfg.can.addMedia).toBe(true);
+            expect(cfg.can.manageMedia).toBe(false);
+            expect(cfg.can.manageUsers).toBe(false);
+            expect(cfg.can.manageComments).toBe(false);
+            expect(cfg.can.addComment).toBe(false);
+        });
     });
 });

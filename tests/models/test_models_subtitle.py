@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from files import helpers, tasks
 from files.models import Language, Subtitle, TranscriptionRequest
-from files.models.utils import subtitles_file_path
+from files.models.utils import media_uid_shard_path, subtitles_file_path
 from files.tests import create_account, create_media
 
 VTT = b"WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello there.\n\n00:00:02.000 --> 00:00:04.000\nwell-known  line\n"
@@ -36,9 +36,9 @@ class SubtitleTests(TestCase):
         self.assertEqual(subtitle.url, f"/edit_subtitle?id={subtitle.id}")
         self.assertEqual(str(self.english), "en-English")
 
-    def test_files_are_stored_under_the_media_owner(self):
-        subtitle = Subtitle(media=self.media)
-        self.assertEqual(subtitles_file_path(subtitle, "c.vtt"), "original//subtitles/user/subtitle_user/c.vtt")
+    def test_files_are_stored_under_the_sharded_media_uid_dir(self):
+        subtitle = Subtitle(media=self.media, language=self.english)
+        self.assertEqual(subtitles_file_path(subtitle, "c.vtt"), f"subtitles/{media_uid_shard_path(self.media.uid)}/en.vtt")
 
     def test_subtitle_text_joins_lines_without_punctuation(self):
         self.assertEqual(self.add_subtitle(VTT).subtitle_text, "Hello there well known line")

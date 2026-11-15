@@ -8,6 +8,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from files.models import Category, Language, Media, MediaPermission, Subtitle
+from files.models.utils import media_uid_shard_path
 from files.tests import create_account
 from rbac.models import RBACGroup, RBACMembership
 
@@ -126,6 +127,14 @@ class MediaAuthPathBindingTest(TestCase):
         subtitle.save()
         return subtitle
 
+    def _legacy_subtitle_for(self, media):
+        """A caption stored the way it was before sharding: original/subtitles/user/<owner>/..."""
+        subtitle = self._subtitle_for(media)
+        legacy_name = f"original/subtitles/user/{media.user.username}/{media.friendly_token}-da.srt"
+        Subtitle.objects.filter(pk=subtitle.pk).update(subtitle_file=legacy_name)
+        subtitle.refresh_from_db()
+        return subtitle
+
     def test_a_uid_in_the_query_string_cannot_authorize_a_private_file(self):
         subtitle = self._subtitle_for(self.private_media)
         uri = f"/media/{subtitle.subtitle_file.name}?x={self.public_media.uid.hex}"
@@ -185,8 +194,9 @@ class MediaAuthPathBindingTest(TestCase):
         uri = "/media/original/subtitles/user/owner/does-not-exist-en.srt"
         self.assertEqual(self._auth(uri).status_code, 403)
 
-    def test_a_subtitle_path_under_the_wrong_username_is_denied(self):
-        subtitle = self._subtitle_for(self.public_media)
+    def test_a_legacy_subtitle_path_under_the_wrong_username_is_denied(self):
+        subtitle = self._legacy_subtitle_for(self.public_media)
+        self.assertEqual(self._auth(f"/media/{subtitle.subtitle_file.name}").status_code, 204)
         forged = subtitle.subtitle_file.name.replace("/stranger/", "/owner/")
         self.assertEqual(self._auth(f"/media/{forged}").status_code, 403)
 
@@ -373,3 +383,195 @@ class PdfViewTest(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 404)
         Media.objects.filter(pk=self.media.pk).update(media_type="pdf", media_file="original/missing.pdf")
         self.assertEqual(self.client.get(self.url).status_code, 404)
+
+
+class ShardedMediaAuthTest(TestCase):
+    """New writes live at <kind>/<aa>/<bb>/<uid.hex>/<file>; legacy URLs must keep working"""
+
+    fixtures = ["fixtures/categories.json", "fixtures/encoding_profiles.json"]
+
+    def setUp(self):
+        cache.clear()
+        self.password = "this_is_a_fake_password"
+        self.owner = create_account(username="owner", password=self.password)
+        self.stranger = create_account(username="stranger", password=self.password)
+        # a username that is itself a valid uid must never be read as the media's uid
+        self.hex_owner = create_account(username="f777c82f755df2d4bc9688d340b69292", password=self.password)
+
+        self.public_media = self._media("public", self.stranger, "public")
+        self.unlisted_media = self._media("unlisted", self.stranger, "unlisted")
+        self.private_media = self._media("private", self.owner, "private")
+        self.language = Language.objects.create(code="en", title="English")
+        cache.clear()
+
+    def _media(self, title, user, state):
+        with open("fixtures/test_image.png", "rb") as fp:
+            media = Media.objects.create(title=title, user=user, media_file=File(fp))
+        media.state = state
+        media.save()
+        return media
+
+    def _auth(self, uri, client=None):
+        return (client or Client()).get(MEDIA_AUTH_URL, HTTP_X_ORIGINAL_URI=uri)
+
+    def _login(self, user):
+        client = Client()
+        client.login(username=user.username, password=self.password)
+        return client
+
+    @staticmethod
+    def _sharded(kind, media, tail):
+        return f"/media/{kind}/{media_uid_shard_path(media.uid)}/{tail}"
+
+    def test_new_uploads_land_in_the_sharded_layout(self):
+        media = self.public_media
+        self.assertEqual(media.media_file.name, f"original/{media_uid_shard_path(media.uid)}/source.png")
+        self.assertEqual(media.thumbnail.name, f"thumbnails/{media_uid_shard_path(media.uid)}/listing.jpg")
+        self.assertEqual(media.poster.name, f"thumbnails/{media_uid_shard_path(media.uid)}/poster.jpg")
+
+    def test_sharded_paths_of_every_kind_authorize_by_media_state(self):
+        for kind, tail in [
+            ("original", "source.mp4"),
+            ("encoded", "3.mp4"),
+            ("hls", "master.m3u8"),
+            ("hls", "media-3/stream.m3u8"),
+            ("thumbnails", "poster.jpg"),
+            ("thumbnails", "listing.jpg"),
+            ("thumbnails", "sprites.jpg"),
+            ("thumbnails", "chapters/1.jpg"),
+            ("subtitles", "en.vtt"),
+        ]:
+            for media in (self.public_media, self.unlisted_media):
+                self.assertEqual(self._auth(self._sharded(kind, media, tail)).status_code, 204, f"{kind}/{tail}")
+            uri = self._sharded(kind, self.private_media, tail)
+            self.assertEqual(self._auth(uri).status_code, 403, f"anonymous allowed {kind}/{tail}")
+            self.assertEqual(self._auth(uri, self._login(self.stranger)).status_code, 403, f"stranger allowed {kind}/{tail}")
+            self.assertEqual(self._auth(uri, self._login(self.owner)).status_code, 204, f"owner denied {kind}/{tail}")
+            cache.clear()
+
+    def test_the_real_stored_names_of_a_private_media_are_gated(self):
+        media = self.private_media
+        for name in (media.media_file.name, media.thumbnail.name, media.poster.name):
+            self.assertEqual(self._auth(f"/media/{name}").status_code, 403, name)
+            self.assertEqual(self._auth(f"/media/{name}", self._login(self.owner)).status_code, 204, name)
+
+    def test_a_stored_caption_is_resolved_by_its_sharded_directory(self):
+        subtitle = Subtitle(media=self.private_media, user=self.owner, language=self.language)
+        subtitle.subtitle_file.save("whatever.vtt", ContentFile(b"WEBVTT\n"), save=False)
+        subtitle.save()
+        self.assertEqual(subtitle.subtitle_file.name, f"subtitles/{media_uid_shard_path(self.private_media.uid)}/en.vtt")
+        uri = f"/media/{subtitle.subtitle_file.name}"
+        self.assertEqual(self._auth(uri).status_code, 403)
+        self.assertEqual(self._auth(uri, self._login(self.owner)).status_code, 204)
+
+    def test_shards_that_do_not_match_the_uid_are_denied(self):
+        uid = self.public_media.uid.hex
+        wrong = "00" if uid[0:2] != "00" else "11"
+        for uri in [
+            f"/media/original/{wrong}/{uid[2:4]}/{uid}/source.png",
+            f"/media/original/{uid[0:2]}/{wrong}/{uid}/source.png",
+            f"/media/hls/{wrong}/{wrong}/{uid}/master.m3u8",
+            f"/media/thumbnails/{wrong}/{uid[2:4]}/{uid}/poster.jpg",
+            f"/media/subtitles/{uid[2:4]}/{uid[0:2]}/{uid}/en.vtt",
+        ]:
+            self.assertEqual(self._auth(uri).status_code, 403, uri)
+
+    def test_a_sharded_path_cannot_borrow_a_uid_from_another_segment(self):
+        public, private = self.public_media.uid.hex, self.private_media.uid.hex
+        shard = media_uid_shard_path(self.private_media.uid)
+        for uri in [
+            # public uid in the wrong place of a private media's directory
+            f"/media/original/{shard}/{public}.png",
+            f"/media/encoded/{shard}/{public}.mp4",
+            # the uid directory missing, a uid-looking file name instead
+            f"/media/thumbnails/{private[0:2]}/{private[2:4]}/{private}.jpg",
+            f"/media/subtitles/{private[0:2]}/{private[2:4]}/{private}.vtt",
+            # new-layout kinds without shards name no media
+            f"/media/thumbnails/{private}_x.jpg",
+            f"/media/thumbnails/user/owner/{private}_x.jpg",
+            f"/media/subtitles/user/owner/{private}.srt",
+        ]:
+            self.assertEqual(self._auth(uri).status_code, 403, uri)
+
+    def test_a_public_uid_in_the_query_string_cannot_authorize_a_private_sharded_file(self):
+        uri = self._sharded("thumbnails", self.private_media, "poster.jpg") + f"?x={self.public_media.uid.hex}"
+        self.assertEqual(self._auth(uri).status_code, 403)
+
+    def test_traversal_out_of_a_sharded_directory_is_denied(self):
+        public_dir = self._sharded("original", self.public_media, "")
+        private = self.private_media
+        for uri in [
+            f"{public_dir}../{private.uid.hex}/source.png",
+            f"{public_dir}..%2F..%2F{private.uid.hex[0:2]}/{private.uid.hex[2:4]}/{private.uid.hex}/source.png",
+            f"{public_dir}%2e%2e/x",
+        ]:
+            self.assertEqual(self._auth(uri).status_code, 403, uri)
+
+    def test_unknown_sharded_uid_is_denied(self):
+        zero = "0" * 32
+        self.assertEqual(self._auth(f"/media/original/00/00/{zero}/source.png").status_code, 403)
+
+    def test_sharded_category_images_follow_their_category(self):
+        with open("fixtures/test_image.png", "rb") as fp:
+            plain = Category.objects.create(title="Botany", thumbnail=ImageFile(BytesIO(fp.read()), name="poster.png"))
+        with open("fixtures/test_image.png", "rb") as fp:
+            restricted = Category.objects.create(title="Staff", thumbnail=ImageFile(BytesIO(fp.read()), name="poster.png"), is_rbac_category=True)
+        self.assertTrue(plain.thumbnail.name.startswith("categories/"))
+        self.assertEqual(self._auth(f"/media/{plain.thumbnail.name}").status_code, 204)
+        cache.clear()
+        with override_settings(USE_RBAC=True):
+            self.assertEqual(self._auth(f"/media/{restricted.thumbnail.name}").status_code, 403)
+        cache.clear()
+        self.assertEqual(self._auth("/media/categories/00/00/nobody.jpg").status_code, 403)
+        self.assertEqual(self._auth("/media/categories/../original/x").status_code, 403)
+
+    # Legacy layouts stay readable until an operator migrates them -------------------------
+
+    def _legacy(self, **fields):
+        Media.objects.filter(pk=fields.pop("pk")).update(**fields)
+        cache.clear()
+
+    def test_legacy_original_and_encoded_urls_still_authorize(self):
+        for media, user in ((self.public_media, None), (self.private_media, self.owner)):
+            uid = media.uid.hex
+            original = f"/media/original/user/{media.user.username}/{uid}.test_image.png"
+            encoded = f"/media/encoded/3/{media.user.username}/{uid}.test_image.png.mp4"
+            for uri in (original, encoded):
+                if user is None:
+                    self.assertEqual(self._auth(uri).status_code, 204, uri)
+                else:
+                    self.assertEqual(self._auth(uri).status_code, 403, uri)
+                    self.assertEqual(self._auth(uri, self._login(user)).status_code, 204, uri)
+
+    def test_legacy_unsharded_hls_urls_still_authorize(self):
+        public = f"/media/hls/{self.public_media.uid.hex}/master.m3u8"
+        private = f"/media/hls/{self.private_media.uid.hex}/media-1/stream.m3u8"
+        self.assertEqual(self._auth(public).status_code, 204)
+        self.assertEqual(self._auth(private).status_code, 403)
+        self.assertEqual(self._auth(private, self._login(self.owner)).status_code, 204)
+
+    def test_legacy_thumbnail_urls_are_resolved_by_their_stored_path(self):
+        for media in (self.public_media, self.private_media):
+            legacy_name = f"original/thumbnails/user/{media.user.username}/{media.uid.hex}_abc.jpg"
+            arbitrary_name = f"original/thumbnails/user/{media.user.username}/holiday.jpg"
+            self._legacy(pk=media.pk, thumbnail=legacy_name, uploaded_poster=arbitrary_name)
+        public = self.public_media
+        private = self.private_media
+        self.assertEqual(self._auth(f"/media/original/thumbnails/user/stranger/{public.uid.hex}_abc.jpg").status_code, 204)
+        self.assertEqual(self._auth("/media/original/thumbnails/user/stranger/holiday.jpg").status_code, 204)
+        self.assertEqual(self._auth("/media/original/thumbnails/user/owner/holiday.jpg").status_code, 403)
+        self.assertEqual(self._auth("/media/original/thumbnails/user/owner/holiday.jpg", self._login(self.owner)).status_code, 204)
+        self.assertEqual(self._auth(f"/media/original/thumbnails/user/owner/{private.uid.hex}_abc.jpg").status_code, 403)
+
+    def test_legacy_category_urls_still_authorize(self):
+        category = Category.objects.create(title="Legacy")
+        Category.objects.filter(pk=category.pk).update(thumbnail="original/categories/abc123.legacy.jpg")
+        cache.clear()
+        self.assertEqual(self._auth("/media/original/categories/abc123.legacy.jpg").status_code, 204)
+        self.assertEqual(self._auth("/media/original/categories/unknown.jpg").status_code, 403)
+
+    def test_a_hex_username_in_a_legacy_path_is_not_a_shard_or_uid(self):
+        media = self._media("hexed", self.hex_owner, "private")
+        uri = f"/media/original/user/{self.hex_owner.username}/{media.uid.hex}.x.png"
+        self.assertEqual(self._auth(uri).status_code, 403)
+        self.assertEqual(self._auth(uri, self._login(self.hex_owner)).status_code, 204)

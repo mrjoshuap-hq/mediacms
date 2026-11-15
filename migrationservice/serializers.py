@@ -205,6 +205,22 @@ class MigrationServiceSerializer(serializers.ModelSerializer):
 
             attrs["options"] = options
 
+        validate_settings = getattr(klass, "validate_settings", None)
+        if validate_settings is not None and (self.instance is None or connection is not None or options is not None):
+            # the provider checks what only it understands: a filesystem mount must sit under
+            # the import root and a library needs an owner, so a bad one is refused at save
+            stored_connection = dict(self.instance.connection) if self.instance else {}
+            stored_options = dict(self.instance.options) if self.instance else {}
+            checked_options = dict(klass.default_options)
+            checked_options.update(options if options is not None else stored_options)
+            try:
+                checked_connection, checked_options = validate_settings(connection if connection is not None else stored_connection, checked_options)
+            except ValueError as exc:
+                raise serializers.ValidationError({getattr(exc, "field", "options"): str(exc)})
+            attrs["connection"] = checked_connection
+            if options is not None:
+                attrs["options"] = checked_options
+
         return attrs
 
     def to_representation(self, instance):

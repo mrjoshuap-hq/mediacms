@@ -1,8 +1,15 @@
 version: "3"
 
+# Default images are local tags from `make docker-build`.
+# Override for GHCR, e.g. MEDIACMS_IMAGE=ghcr.io/mrjoshuap/mediacms:beta
+
 services:
   migrations:
-    image: mediacms/mediacms:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    image: ${MEDIACMS_IMAGE:-mediacms:local}
     volumes:
       - ./:/home/mediacms.io/mediacms/
     environment:
@@ -22,7 +29,7 @@ services:
       db:
         condition: service_healthy
   web:
-    image: mediacms/mediacms:latest
+    image: ${MEDIACMS_IMAGE:-mediacms:local}
     deploy:
       replicas: 1
     ports:
@@ -37,7 +44,7 @@ services:
     depends_on:
       - migrations
   celery_beat:
-    image: mediacms/mediacms:latest
+    image: ${MEDIACMS_IMAGE:-mediacms:local}
     volumes:
       - ./:/home/mediacms.io/mediacms/
     environment:
@@ -49,7 +56,7 @@ services:
     depends_on:
       - redis
   celery_worker:
-    image: mediacms/mediacms:latest
+    image: ${MEDIACMS_IMAGE:-mediacms:local}
     deploy:
       replicas: 1
     volumes:

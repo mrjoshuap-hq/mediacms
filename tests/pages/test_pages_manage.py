@@ -34,8 +34,14 @@ class ManagePagesAccessTest(TestCase):
             with self.subTest(url=url):
                 self.assertRedirects(self.client.get(url), "/", fetch_redirect_response=False)
 
-    def test_editors_managers_and_admins_can_open_every_manage_page(self):
-        for user in [self.editor, self.manager, self.admin]:
+    def test_editors_can_open_media_and_comments_but_not_users(self):
+        self.client.force_login(self.editor)
+        self.assertEqual(self.client.get("/manage/media").status_code, 200)
+        self.assertEqual(self.client.get("/manage/comments").status_code, 200)
+        self.assertRedirects(self.client.get("/manage/users"), "/", fetch_redirect_response=False)
+
+    def test_managers_and_admins_can_open_every_manage_page(self):
+        for user in [self.manager, self.admin]:
             self.client.force_login(user)
             for url, template in MANAGE_PAGES.items():
                 with self.subTest(user=user.username, url=url):

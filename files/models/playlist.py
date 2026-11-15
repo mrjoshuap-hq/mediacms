@@ -1,10 +1,15 @@
+import logging
 import uuid
 
 from django.db import models
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.html import strip_tags
 
 from .. import helpers
+
+logger = logging.getLogger(__name__)
 
 
 class Playlist(models.Model):
@@ -29,7 +34,10 @@ class Playlist(models.Model):
 
     @property
     def media_count(self):
-        return self.media.filter(listable=True).count()
+        if hasattr(self, "annotated_media_count"):
+            return self.annotated_media_count
+        # Match playlist detail visibility for anonymous viewers (not site-wide listable).
+        return self.media.filter(state__in=["public", "unlisted"]).count()
 
     def get_absolute_url(self, api=False):
         if api:
@@ -60,6 +68,17 @@ class Playlist(models.Model):
             return True
         return False
 
+    def resequence_media(self):
+        """Renumber playlist media ordering to a contiguous 1..n sequence."""
+        items = list(self.playlistmedia_set.order_by("ordering", "-action_date"))
+        to_update = []
+        for index, pm in enumerate(items, start=1):
+            if pm.ordering != index:
+                pm.ordering = index
+                to_update.append(pm)
+        if to_update:
+            PlaylistMedia.objects.bulk_update(to_update, ["ordering"])
+
     def save(self, *args, **kwargs):
         strip_text_items = ["title", "description"]
         for item in strip_text_items:
@@ -76,7 +95,11 @@ class Playlist(models.Model):
 
     @property
     def thumbnail_url(self):
-        pm = self.playlistmedia_set.filter(media__listable=True).first()
+        if hasattr(self, "annotated_thumbnail"):
+            if self.annotated_thumbnail:
+                return helpers.url_from_path(self.annotated_thumbnail)
+            return None
+        pm = self.playlistmedia_set.filter(media__state__in=["public", "unlisted"]).first()
         if pm and pm.media.thumbnail:
             return helpers.url_from_path(pm.media.thumbnail.path)
         return None
@@ -95,3 +118,73 @@ class PlaylistMedia(models.Model):
 
     class Meta:
         ordering = ["ordering", "-action_date"]
+
+
+@receiver(post_save, sender=Playlist)
+def playlist_save(sender, instance, created, **kwargs):
+    """Log playlist creation and updates"""
+    if kwargs.get("raw"):
+        return
+    if created:
+        logger.info(
+            "Playlist created - playlist_id=%s, friendly_token=%s, title=%s, user_id=%s, username=%s",
+            instance.id,
+            instance.friendly_token,
+            instance.title,
+            instance.user.id if instance.user else None,
+            instance.user.username if instance.user else None,
+        )
+    else:
+        logger.debug(
+            "Playlist updated - playlist_id=%s, friendly_token=%s, title=%s, user_id=%s",
+            instance.id,
+            instance.friendly_token,
+            instance.title,
+            instance.user.id if instance.user else None,
+        )
+
+
+@receiver(post_delete, sender=Playlist)
+def playlist_delete(sender, instance, **kwargs):
+    """Log playlist deletion"""
+    logger.info(
+        "Playlist deleted - playlist_id=%s, friendly_token=%s, title=%s, user_id=%s, username=%s",
+        instance.id,
+        instance.friendly_token,
+        instance.title,
+        instance.user.id if instance.user else None,
+        instance.user.username if instance.user else None,
+    )
+
+
+@receiver(post_save, sender=PlaylistMedia)
+def playlistmedia_save(sender, instance, created, **kwargs):
+    """Log media added to playlist"""
+    if kwargs.get("raw"):
+        return
+    if created:
+        logger.info(
+            "Media added to playlist - playlist_id=%s, playlist_friendly_token=%s, media_friendly_token=%s, ordering=%s",
+            instance.playlist.id if instance.playlist else None,
+            instance.playlist.friendly_token if instance.playlist else None,
+            instance.media.friendly_token if instance.media else None,
+            instance.ordering,
+        )
+    else:
+        logger.debug(
+            "Playlist media updated - playlist_id=%s, media_friendly_token=%s, ordering=%s",
+            instance.playlist.id if instance.playlist else None,
+            instance.media.friendly_token if instance.media else None,
+            instance.ordering,
+        )
+
+
+@receiver(post_delete, sender=PlaylistMedia)
+def playlistmedia_delete(sender, instance, **kwargs):
+    """Log media removed from playlist"""
+    logger.info(
+        "Media removed from playlist - playlist_id=%s, playlist_friendly_token=%s, media_friendly_token=%s",
+        instance.playlist.id if instance.playlist else None,
+        instance.playlist.friendly_token if instance.playlist else None,
+        instance.media.friendly_token if instance.media else None,
+    )

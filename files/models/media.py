@@ -31,8 +31,13 @@ from .utils import (
     MEDIA_STATES,
     MEDIA_TYPES_SUPPORTED,
     PREVIEW_PROFILE_NAME,
+    media_listing_thumbnail_file_path,
+    media_poster_file_path,
+    media_sprites_file_path,
+    media_uid_dir,
+    media_uploaded_listing_thumbnail_file_path,
+    media_uploaded_poster_file_path,
     original_media_file_path,
-    original_thumbnail_file_path,
 )
 from .video_data import VideoTrimRequest
 
@@ -142,7 +147,11 @@ class Media(models.Model):
         default="video",
     )
 
-    password = models.CharField(max_length=100, blank=True, help_text="password for private media")
+    password = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Hashed password for password-protected media (Django password hashers)",
+    )
 
     preview_file_path = models.CharField(
         max_length=500,
@@ -151,7 +160,7 @@ class Media(models.Model):
     )
 
     poster = ProcessedImageField(
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_poster_file_path,
         processors=[ResizeToFit(width=720, height=None)],
         format="JPEG",
         options={"quality": 95},
@@ -181,7 +190,7 @@ class Media(models.Model):
     )
 
     sprites = models.FileField(
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_sprites_file_path,
         blank=True,
         max_length=500,
         help_text="sprites file, only for videos, displayed on the video player",
@@ -200,7 +209,7 @@ class Media(models.Model):
     title = models.CharField(max_length=100, help_text="media title", blank=True, db_index=True)
 
     thumbnail = ProcessedImageField(
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_listing_thumbnail_file_path,
         processors=[ResizeToFit(width=344, height=None)],
         format="JPEG",
         options={"quality": 95},
@@ -214,7 +223,7 @@ class Media(models.Model):
     uid = models.UUIDField(unique=True, default=uuid.uuid4, help_text="A unique identifier for the Media")
 
     uploaded_thumbnail = ProcessedImageField(
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_uploaded_listing_thumbnail_file_path,
         processors=[ResizeToFit(width=344, height=None)],
         format="JPEG",
         options={"quality": 85},
@@ -226,7 +235,7 @@ class Media(models.Model):
     uploaded_poster = ProcessedImageField(
         verbose_name="Upload image",
         help_text="This image will characterize the media",
-        upload_to=original_thumbnail_file_path,
+        upload_to=media_uploaded_poster_file_path,
         processors=[ResizeToFit(width=720, height=None)],
         format="JPEG",
         options={"quality": 85},
@@ -453,7 +462,17 @@ class Media(models.Model):
         Set encoding_status as success for non video
         content since all listings filter for encoding_status success
         """
+        logger.debug(
+            "Setting media type - friendly_token=%s, current_media_type=%s",
+            self.friendly_token,
+            self.media_type,
+        )
         kind = helpers.get_file_type(self.media_file.path)
+        logger.debug(
+            "File type detected - friendly_token=%s, detected_type=%s",
+            self.friendly_token,
+            kind,
+        )
         if kind is not None:
             if kind == "image":
                 self.media_type = "image"
@@ -475,7 +494,12 @@ class Media(models.Model):
             elif ret.get("is_video") or ret.get("is_audio"):
                 try:
                     self.media_info = json.dumps(ret)
-                except TypeError:
+                except TypeError as e:
+                    logger.error(
+                        "Type error updating search vector - friendly_token=%s, error=%s",
+                        self.friendly_token,
+                        str(e),
+                    )
                     self.media_info = ""
                 self.md5sum = ret.get("md5sum")
                 self.size = helpers.show_file_size(ret.get("file_size"))
@@ -546,7 +570,7 @@ class Media(models.Model):
         if not self.media_type == "video":
             return False
 
-        if self.thumbnail_time and 0 <= self.thumbnail_time < self.duration:
+        if self.thumbnail_time and 0 < self.thumbnail_time <= self.duration:
             thumbnail_time = self.thumbnail_time
         else:
             thumbnail_time = round(random.uniform(0, self.duration - 0.1), 1)
@@ -596,10 +620,24 @@ class Media(models.Model):
         so that no EncodeProfile for highter heights than the video
         are created
         """
+        logger.debug(
+            "Starting encode - friendly_token=%s, profile_count=%s, force=%s, chunkize=%s, video_height=%s, duration=%s",
+            self.friendly_token,
+            len(profiles) if profiles else 0,
+            force,
+            chunkize,
+            self.video_height,
+            self.duration,
+        )
 
         if not profiles:
             profiles = EncodeProfile.objects.filter(active=True)
         profiles = list(profiles)
+        logger.debug(
+            "Active profiles retrieved - friendly_token=%s, profile_count=%s",
+            self.friendly_token,
+            len(profiles),
+        )
 
         from .. import tasks
 
@@ -642,9 +680,13 @@ class Media(models.Model):
         for field, value in stored.items():
             setattr(self, field, value)
 
-    def post_encode_actions(self, encoding=None, action=None):
+    def post_encode_actions(self, encoding=None, action=None, *, hls_full=False):
         """perform things after encode has run
         whether it has failed or succeeded
+
+        By default each successful h264 encoding packages only itself into HLS
+        (incremental). Pass hls_full=True to rebuild from all successful encodings
+        (used by migration import after attaching every flavor).
         """
 
         self.set_encoding_status()
@@ -664,9 +706,11 @@ class Media(models.Model):
         if encoding and encoding.status == "success" and encoding.profile.codec == "h264" and action == "add" and not encoding.chunk:
             from .. import tasks
 
-            tasks.create_hls.delay(self.friendly_token)
+            if hls_full:
+                tasks.create_hls.delay(self.friendly_token)
+            else:
+                tasks.create_hls.delay(self.friendly_token, encoding.id)
 
-            # TODO: ideally would ensure this is run only at the end when the last encoding is done...
             vt_request = VideoTrimRequest.objects.filter(media=self, status="running").first()
             if vt_request:
                 tasks.post_trim_action.delay(self.friendly_token)
@@ -678,6 +722,7 @@ class Media(models.Model):
         """Set encoding_status for videos
         Set success if at least one mp4 or webm exists
         """
+        old_status = self.encoding_status
         mp4_statuses = set(encoding.status for encoding in self.encodings.filter(profile__extension="mp4", chunk=False).exclude(profile__name=PREVIEW_PROFILE_NAME))
         webm_statuses = set(encoding.status for encoding in self.encodings.filter(profile__extension="webm", chunk=False))
 
@@ -689,6 +734,14 @@ class Media(models.Model):
             encoding_status = "running"
         else:
             encoding_status = "fail"
+
+        if old_status != encoding_status:
+            logger.info(
+                "Media encoding status changed - friendly_token=%s, old_status=%s, new_status=%s",
+                self.friendly_token,
+                old_status,
+                encoding_status,
+            )
         self.encoding_status = encoding_status
 
         return True
@@ -788,13 +841,24 @@ class Media(models.Model):
         return ep
 
     @property
+    def categories_info(self):
+        """Property used on serializers"""
+
+        ret = []
+        for cat in self.category.all():
+            ret.append({"title": cat.title, "url": cat.get_absolute_url()})
+        # Sort alphabetically by title (case-insensitive)
+        return sorted(ret, key=lambda x: x['title'].lower())
+
+    @property
     def tags_info(self):
         """Property used on serializers"""
 
         ret = []
         for tag in self.tags.all():
             ret.append({"title": tag.title, "url": tag.get_absolute_url()})
-        return ret
+        # Sort alphabetically by title (case-insensitive)
+        return sorted(ret, key=lambda x: x['title'].lower())
 
     @property
     def original_media_url(self):
@@ -995,7 +1059,13 @@ class Media(models.Model):
 
     @property
     def video_chapters_folder(self):
-        custom_folder = f"{settings.THUMBNAIL_UPLOAD_DIR}{self.user.username}/{self.friendly_token}_chapters"
+        """thumbnails/aa/bb/<uid>/chapters under MEDIA_ROOT"""
+        return os.path.join(media_uid_dir(settings.THUMBNAIL_UPLOAD_DIR, self.uid), "chapters")
+
+    @property
+    def legacy_video_chapters_folder(self):
+        """Pre-sharding chapters folder, only read to clean up media that still has it"""
+        custom_folder = f"{settings.MEDIA_UPLOAD_DIR}thumbnails/{self.user.username}/{self.friendly_token}_chapters"
         return os.path.join(settings.MEDIA_ROOT, custom_folder)
 
     @property
@@ -1079,11 +1149,26 @@ def media_save(sender, instance, created, **kwargs):
     if created:
         from ..methods import notify_users
 
+        # Log media creation - this should always fire for new media
+        logger.info(
+            "Media created - friendly_token=%s, user_id=%s, username=%s, media_type=%s, title=%s",
+            instance.friendly_token,
+            instance.user.id if instance.user else None,
+            instance.user.username if instance.user else None,
+            instance.media_type,
+            instance.title[:50] if instance.title else None,
+        )
         instance.media_init()
         if not getattr(instance, "_skip_admin_notification", False):
             notify_users(friendly_token=instance.friendly_token, action="media_added")
+    else:
+        # Log significant updates
+        logger.debug(
+            "Media updated - friendly_token=%s, user_id=%s",
+            instance.friendly_token,
+            instance.user.id if instance.user else None,
+        )
 
-    instance.user.update_user_media()
     if instance.category.all():
         # this won't catch when a category
         # is removed from a media, which is what we want...
@@ -1099,6 +1184,12 @@ def media_save(sender, instance, created, **kwargs):
 
 @receiver(pre_delete, sender=Media)
 def media_file_pre_delete(sender, instance, **kwargs):
+    logger.info(
+        "Media deletion initiated - friendly_token=%s, user_id=%s, media_type=%s",
+        instance.friendly_token,
+        instance.user.id if instance.user else None,
+        instance.media_type,
+    )
     if instance.category.all():
         for category in instance.category.all():
             instance.category.remove(category)
@@ -1115,6 +1206,13 @@ def media_file_delete(sender, instance, **kwargs):
     Deletes file from filesystem
     when corresponding `Media` object is deleted.
     """
+    logger.info(
+        "Media deletion completed - friendly_token=%s, user_id=%s, media_type=%s, title=%s",
+        instance.friendly_token,
+        instance.user.id if instance.user else None,
+        instance.media_type,
+        instance.title[:50] if instance.title else None,
+    )
     if instance.media_file:
         helpers.rm_file(instance.media_file.path)
     if instance.thumbnail:
@@ -1131,10 +1229,15 @@ def media_file_delete(sender, instance, **kwargs):
         p = os.path.dirname(instance.hls_file)
         helpers.rm_dir(p)
 
-    instance.user.update_user_media()
+    # Sharded media own one directory per kind, removed whole (symlinks inside are
+    # unlinked, never followed) without listing any kind root.
+    uid_dirs = [media_uid_dir(kind, instance.uid) for kind in (settings.MEDIA_UPLOAD_DIR, settings.MEDIA_ENCODING_DIR, settings.THUMBNAIL_UPLOAD_DIR, settings.SUBTITLES_UPLOAD_DIR)]
+    uid_dirs.append(media_uid_dir("hls", instance.uid))
+    for uid_dir in uid_dirs:
+        helpers.rm_dir(uid_dir)
 
-    # remove extra zombie thumbnails
-    if instance.thumbnail:
+    # remove extra zombie thumbnails (legacy layout: many media share one directory)
+    if instance.thumbnail and os.path.dirname(instance.thumbnail.path) != media_uid_dir(settings.THUMBNAIL_UPLOAD_DIR, instance.uid):
         thumbnails_path = os.path.dirname(instance.thumbnail.path)
         thumbnails = glob.glob(f'{thumbnails_path}/{instance.uid.hex}.*')
         for thumbnail in thumbnails:
@@ -1142,13 +1245,74 @@ def media_file_delete(sender, instance, **kwargs):
 
 
 @receiver(m2m_changed, sender=Media.category.through)
-def media_m2m(sender, instance, **kwargs):
-    if instance.category.all():
-        for category in instance.category.all():
-            category.update_category_media()
-    if instance.tags.all():
-        for tag in instance.tags.all():
-            tag.update_tag_media()
+def media_m2m(sender, instance, action, pk_set=None, **kwargs):
+    # Only update on post actions to avoid duplicate updates
+    if action not in ['post_add', 'post_remove', 'post_clear']:
+        return
 
-    if kwargs.get("action") in ("post_add", "post_remove", "post_clear"):
-        instance.update_search_vector()
+    from .category import Category
+
+    if action in ['post_add', 'post_remove']:
+        categories = Category.objects.filter(pk__in=pk_set) if pk_set else []
+        category_names = [cat.title for cat in categories]
+        logger.info(
+            "Media category %s - friendly_token=%s, user_id=%s, action=%s, category_count=%s, category_names=%s",
+            "added" if action == 'post_add' else "removed",
+            instance.friendly_token if instance.friendly_token else None,
+            instance.user.id if instance.user else None,
+            action,
+            len(categories),
+            category_names,
+        )
+
+    categories_to_update = set()
+    if action == 'post_clear':
+        if instance.category.all():
+            categories_to_update.update(instance.category.all())
+    else:
+        if pk_set:
+            categories_to_update.update(Category.objects.filter(pk__in=pk_set))
+        if instance.category.all():
+            categories_to_update.update(instance.category.all())
+
+    for category in categories_to_update:
+        category.update_category_media()
+
+    # Avoid refresh_from_db here; M2M is already applied on the instance.
+    instance.update_search_vector()
+
+
+@receiver(m2m_changed, sender=Media.tags.through)
+def media_tags_m2m(sender, instance, action, pk_set=None, **kwargs):
+    if action not in ['post_add', 'post_remove', 'post_clear']:
+        return
+
+    from .category import Tag
+
+    if action in ['post_add', 'post_remove']:
+        tags = Tag.objects.filter(pk__in=pk_set) if pk_set else []
+        tag_names = [tag.title for tag in tags]
+        logger.info(
+            "Media tag %s - friendly_token=%s, user_id=%s, action=%s, tag_count=%s, tag_names=%s",
+            "added" if action == 'post_add' else "removed",
+            instance.friendly_token if instance.friendly_token else None,
+            instance.user.id if instance.user else None,
+            action,
+            len(tags),
+            tag_names,
+        )
+
+    tags_to_update = set()
+    if action == 'post_clear':
+        if instance.tags.all():
+            tags_to_update.update(instance.tags.all())
+    else:
+        if pk_set:
+            tags_to_update.update(Tag.objects.filter(pk__in=pk_set))
+        if instance.tags.all():
+            tags_to_update.update(instance.tags.all())
+
+    for tag in tags_to_update:
+        tag.update_tag_media()
+
+    instance.update_search_vector()

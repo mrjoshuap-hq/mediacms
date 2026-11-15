@@ -620,8 +620,10 @@ $mig-radius: 2px;
   }
 
   input[type='text'],
+  input[type='number'],
   input[type='time'],
   input[type='datetime-local'],
+  textarea,
   select {
     display: block;
     width: 100%;
@@ -638,6 +640,30 @@ $mig-radius: 2px;
     display: block;
     margin-top: 6px;
   }
+}
+
+// storage mode: a radio group (not a label), so each choice is its own clickable row
+.migration-edit-options > div.migration-edit-nested {
+  padding: 12px 14px 14px 40px;
+  font-size: 13px;
+
+  > span {
+    display: block;
+    margin-bottom: 6px;
+    @include mig-muted;
+  }
+
+  > label {
+    display: flex;
+    align-items: flex-start;
+    padding: 6px 0;
+    cursor: pointer;
+  }
+}
+
+.migration-edit-options > label.migration-edit-nested textarea {
+  max-width: 480px;
+  font-family: inherit;
 }
 
 .migration-edit-options input[type='radio'] {
@@ -875,6 +901,16 @@ $mig-radius: 2px;
       @include mig-muted;
     }
   }
+}
+
+.migration-detail-note {
+  @include mig-card;
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  font-size: 12px;
+  line-height: 1.7;
+  background-color: var(--body-bg-color);
+  @include mig-muted;
 }
 
 .migration-detail-section {

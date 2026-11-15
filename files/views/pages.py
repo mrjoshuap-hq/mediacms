@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 import re
+import smtplib
+from functools import wraps
 
 from django.conf import settings
 from django.contrib import messages
@@ -9,10 +12,14 @@ from django.core.mail import EmailMessage
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.utils.html import strip_tags
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 
 from cms.version import VERSION
-from files.methods import user_allowed_to_upload
+from files.methods import (
+    get_interactive_email_connection,
+    user_allowed_to_upload,
+    user_is_pending_approval,
+)
 from users.models import User
 
 from .. import helpers
@@ -36,22 +43,42 @@ from ..methods import (
     handle_video_chapters,
     is_media_allowed_type,
     is_mediacms_editor,
+    is_mediacms_manager,
+    media_password_unlocked,
+    media_requires_password,
 )
 from ..models import Category, Media, Page, Playlist, Subtitle, Tag, VideoTrimRequest
 from ..tasks import save_user_action, video_trim_task
 
+logger = logging.getLogger(__name__)
+
+
+def refuse_pending(view):
+    """Signed-in users who are not approved may browse, not change the library."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        if user_is_pending_approval(request.user):
+            return HttpResponseRedirect("/")
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
 
 def get_page(request, slug):
+    from files.page_slugs import resolve_public_page
+
     context = {}
-    page = Page.objects.filter(slug=slug).first()
+    page = resolve_public_page(slug)
     if page:
         context["page"] = page
     else:
-        return render(request, "404.html", context)
+        return render(request, "404.html", context, status=404)
     return render(request, "cms/page.html", context)
 
 
 @login_required
+@refuse_pending
 def record_screen(request):
     """Record screen view"""
 
@@ -89,6 +116,7 @@ def setlanguage(request):
 
 
 @login_required
+@refuse_pending
 def add_subtitle(request):
     """Add subtitle view"""
 
@@ -142,6 +170,7 @@ def add_subtitle(request):
 
 
 @login_required
+@refuse_pending
 def edit_subtitle(request):
     subtitle_id = request.GET.get("id", "").strip()
     action = request.GET.get("action", "").strip()
@@ -195,6 +224,7 @@ def categories(request):
     return render(request, "cms/categories.html", context)
 
 
+@refuse_pending
 def edit_category(request, uid):
     """Edit one category's title, description and thumbnail.
 
@@ -227,8 +257,6 @@ def contact(request):
     context = {}
     if request.method == "GET":
         form = ContactForm(request.user)
-        context["form"] = form
-
     else:
         form = ContactForm(request.user, request.POST)
         if form.is_valid():
@@ -258,11 +286,20 @@ Sender email: %s\n
                 settings.DEFAULT_FROM_EMAIL,
                 settings.ADMIN_EMAIL_LIST,
                 reply_to=[from_email],
+                connection=get_interactive_email_connection(),
             )
-            email.send(fail_silently=True)
-            success_msg = "Message was sent! Thanks for contacting"
-            context["success_msg"] = success_msg
+            try:
+                sent = email.send(fail_silently=False)
+            except (OSError, smtplib.SMTPException, ValueError):
+                logger.exception("Failed to send contact form email")
+                context["error_msg"] = "Message could not be sent. Please try again later."
+            else:
+                if sent:
+                    context["success_msg"] = "Message was sent! Thanks for contacting"
+                else:
+                    context["error_msg"] = "Message could not be sent. Please try again later."
 
+    context["form"] = form
     return render(request, "cms/contact.html", context)
 
 
@@ -300,6 +337,7 @@ def _timestamp_to_seconds(value):
 
 @csrf_exempt
 @login_required
+@refuse_pending
 def video_chapters(request, friendly_token):
     if not request.method == "POST":
         return HttpResponseRedirect("/")
@@ -359,6 +397,7 @@ def video_chapters(request, friendly_token):
 
 
 @login_required
+@refuse_pending
 def edit_media(request):
     """Edit a media view"""
 
@@ -393,6 +432,8 @@ def edit_media(request):
                             tag = Tag.objects.create(title=tag, user=request.user)
                         if tag not in media.tags.all():
                             media.tags.add(tag)
+            # M2M signals update the search vector; keep an explicit pass after edit.
+            media.update_search_vector()
             messages.add_message(request, messages.INFO, translate_string(request.LANGUAGE_CODE, "Media was edited"))
             return HttpResponseRedirect(media.get_absolute_url())
     else:
@@ -405,6 +446,7 @@ def edit_media(request):
 
 
 @login_required
+@refuse_pending
 def publish_media(request):
     """Publish media"""
 
@@ -440,6 +482,7 @@ def publish_media(request):
 
 
 @login_required
+@refuse_pending
 def replace_media(request):
     """Replace media file"""
 
@@ -510,6 +553,7 @@ def replace_media(request):
 
 
 @login_required
+@refuse_pending
 def edit_chapters(request):
     """Edit chapters"""
     friendly_token = request.GET.get("m", "").strip()
@@ -539,6 +583,7 @@ def edit_chapters(request):
 
 @csrf_exempt
 @login_required
+@refuse_pending
 def trim_video(request, friendly_token):
     if not settings.ALLOW_VIDEO_TRIMMER:
         return JsonResponse({"success": False, "error": "Video trimming is not allowed"}, status=400)
@@ -571,6 +616,7 @@ def trim_video(request, friendly_token):
 
 
 @login_required
+@refuse_pending
 def edit_video(request):
     """Edit video"""
 
@@ -617,6 +663,7 @@ def edit_video(request):
     )
 
 
+@ensure_csrf_cookie
 def embed_media(request):
     """Embed media view"""
 
@@ -664,10 +711,11 @@ def liked_media(request):
 
 
 @login_required
+@refuse_pending
 def manage_users(request):
     """List users management view"""
 
-    if not is_mediacms_editor(request.user):
+    if not is_mediacms_manager(request.user):
         return HttpResponseRedirect("/")
 
     context = {}
@@ -675,6 +723,7 @@ def manage_users(request):
 
 
 @login_required
+@refuse_pending
 def manage_media(request):
     """List media management view"""
     if not is_mediacms_editor(request.user):
@@ -686,6 +735,7 @@ def manage_media(request):
 
 
 @login_required
+@refuse_pending
 def manage_comments(request):
     """List comments management view"""
     if not is_mediacms_editor(request.user):
@@ -742,17 +792,27 @@ def tags(request):
 
 
 def tos(request):
-    """Terms of service view"""
+    """Terms of service view.
 
-    context = {}
-    return render(request, "cms/tos.html", context)
+    A Page with slug ``tos`` replaces the placeholder template, the same way a
+    Page with slug ``about`` replaces the default About page.
+    """
+
+    page = Page.objects.filter(slug="tos").first()
+    if page:
+        return render(request, "cms/page.html", {"page": page})
+
+    return render(request, "cms/tos.html", {})
 
 
 @login_required
+@refuse_pending
 def upload_media(request):
     """Upload media view"""
 
     from allauth.account.forms import LoginForm
+
+    from ..models.utils import MEDIA_STATES
 
     form = LoginForm()
     context = {}
@@ -761,9 +821,22 @@ def upload_media(request):
     can_upload_exp = settings.CANNOT_ADD_MEDIA_MESSAGE
     context["can_upload_exp"] = can_upload_exp
 
+    default_state = helpers.get_default_state(user=request.user)
+    if is_mediacms_editor(request.user) or settings.PORTAL_WORKFLOW == "public":
+        allowed_states = list(MEDIA_STATES)
+    else:
+        allowed_keys = ["private", "unlisted"]
+        if default_state not in allowed_keys:
+            allowed_keys.append(default_state)
+        allowed_states = [(key, dict(MEDIA_STATES).get(key, key)) for key in allowed_keys if key in dict(MEDIA_STATES)]
+
+    context["default_media_state"] = default_state
+    context["allowed_media_states"] = allowed_states
+
     return render(request, "cms/add-media.html", context)
 
 
+@ensure_csrf_cookie
 def view_media(request):
     """View media view"""
 
@@ -774,12 +847,16 @@ def view_media(request):
         context["media"] = None
         return render(request, "cms/media.html", context)
 
-    user_or_session = get_user_or_session(request)
-    save_user_action.delay(user_or_session, friendly_token=friendly_token, action="watch")
     context = {}
     context["media"] = friendly_token
     can_view = media.state != "private" or (request.user.is_authenticated and (request.user.has_member_access_to_media(media) or is_mediacms_editor(request.user)))
-    context["media_object"] = media if can_view else None
+    password_ok = media_password_unlocked(request, media)
+    context["password_required"] = can_view and media_requires_password(media) and not password_ok
+    context["media_object"] = media if (can_view and password_ok) else None
+
+    if can_view and password_ok:
+        user_or_session = get_user_or_session(request)
+        save_user_action.delay(user_or_session, friendly_token=friendly_token, action="watch")
 
     context["CAN_DELETE_MEDIA"] = False
     context["CAN_EDIT_MEDIA"] = False
@@ -788,9 +865,13 @@ def view_media(request):
     if request.user.is_authenticated:
         if request.user.has_contributor_access_to_media(media) or is_mediacms_editor(request.user):
             context["CAN_EDIT_MEDIA"] = True
+
+        # Comment delete matches CommentDetail: author is checked per comment;
+        # media owner and portal editors may delete any comment on the media.
+        if request.user == media.user or is_mediacms_editor(request.user):
             context["CAN_DELETE_COMMENTS"] = True
 
-        if request.user == media.user or is_mediacms_editor(request.user):
+        if request.user.has_owner_access_to_media(media) or is_mediacms_editor(request.user):
             context["CAN_DELETE_MEDIA"] = True
 
     # in case media is video and is processing (eg the case a video was just uploaded)

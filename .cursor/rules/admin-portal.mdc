@@ -1,0 +1,9 @@
+---
+description: Prefer admin-portal skill for Jazzmin admin work
+globs: admin_customizations/**
+alwaysApply: false
+---
+
+When editing admin portal code, read `skills/admin-portal/SKILL.md` first.
+If you add or change user-visible strings, also follow `skills/i18n/SKILL.md`.
+Keep sidebar order aligned with overview selectors; check Flatly and Darkly themes.

@@ -20,7 +20,9 @@ from users.models import User
 from ..methods import (
     check_comment_for_mention,
     is_mediacms_editor,
+    media_password_unlocked,
     notify_user_on_comment,
+    user_is_pending_approval,
 )
 from ..models import Comment, Media
 from ..serializers import CommentSerializer
@@ -80,6 +82,11 @@ class CommentDetail(APIView):
                 has_access = user.is_authenticated and (user.has_member_access_to_media(media) or is_mediacms_editor(user))
                 if not has_access:
                     return Response({"detail": "media is private"}, status=status.HTTP_400_BAD_REQUEST)
+            if not media_password_unlocked(self.request, media):
+                return Response(
+                    {"detail": "password required", "password_required": True},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             return media
         except PermissionDenied:
             return Response({"detail": "bad permissions"}, status=status.HTTP_400_BAD_REQUEST)
@@ -118,6 +125,8 @@ class CommentDetail(APIView):
         Administrators, MediaCMS editors and managers,
         media owner, and comment owners, can delete a comment
         """
+        if user_is_pending_approval(request.user):
+            return Response({"detail": "User account not approved."}, status=status.HTTP_403_FORBIDDEN)
         if uid:
             try:
                 comment = Comment.objects.get(uid=uid)
@@ -140,6 +149,8 @@ class CommentDetail(APIView):
     )
     def post(self, request, friendly_token):
         """Create a comment"""
+        if user_is_pending_approval(request.user):
+            return Response({"detail": "User account not approved."}, status=status.HTTP_403_FORBIDDEN)
         media = self.get_object(friendly_token)
         if isinstance(media, Response):
             return media

@@ -1,0 +1,239 @@
+# Local development
+
+Use this guide to run MediaCMS on your computer with Docker. It uses the file `docker-compose-dev.yaml`.
+
+## MediaCMS Architecture
+
+The development stack runs six services by default. The optional `docs` profile adds an MkDocs watcher. The `web` service runs the Django development server. The `frontend` service runs the webpack development server. Both servers use the same repository folder.
+
+```mermaid
+flowchart LR
+    browser80["Browser: http://localhost"] --> web["web: Django runserver, port 80"]
+    browser8088["Browser: http://localhost:8088"] --> frontend["frontend: webpack dev server, port 8088"]
+    browserDocs["Browser: /documentation/"] --> web
+    frontend -->|"proxy pages and API to MEDIACMS_BACKEND=http://web"| web
+    web --> db[("db: PostgreSQL 17")]
+    web --> redis[("redis")]
+    migrations["migrations: prestart.sh"] --> db
+    worker["celery_worker"] --> db
+    worker --> redis
+    docs["docs profile: mkdocs → site/"] -.-> web
+    repo[["Repository folder, mounted into web, migrations, celery_worker, and docs"]] -.-> web
+```
+
+For the full stack, see [Architecture](architecture.md).
+
+## Services
+
+| Service | What it does |
+|---------|--------------|
+| `migrations` | Runs `deploy/docker/prestart.sh`. It runs database migrations and creates the `admin` user. |
+| `web` | Runs `python manage.py runserver 0.0.0.0:80`. It reloads when Python files change. |
+| `frontend` | Runs `npm install && npm run start` in `frontend/`. It starts the webpack dev server. |
+| `db` | PostgreSQL 17. |
+| `redis` | Cache and Celery broker. |
+| `celery_worker` | Runs Celery tasks, such as video encoding. |
+| `docs` (optional profile) | Builds MkDocs into `site/` and rebuilds when files change. Off by default. |
+
+In this stack Django runs in debug mode with Django Debug Toolbar. It does not run gunicorn or nginx. `corsheaders` allows all origins.
+
+## Ports
+
+| URL | What you see |
+|-----|--------------|
+| `http://localhost` (port 80) | The real Django site. It serves the **built** frontend bundles from `static/`. |
+| `http://localhost:8088` | The webpack development server. It proxies all pages and API calls to Django. It serves the **live** frontend bundles. |
+| `http://localhost/documentation/` | The MkDocs site (same origin as the portal). Requires the optional `docs` profile. |
+
+Use port 8088 when you edit the frontend. Use port 80 to check what users see.
+
+## Start the stack
+
+1. Install [Docker](https://docs.docker.com/get-docker/) and Docker Compose.
+2. Open a terminal in the repository root.
+3. Build the images:
+
+    ```bash
+    make docker-build
+    ```
+
+    On **Apple Silicon**, BuildKit may warn `InvalidBaseImagePlatform` because the Dockerfile copies amd64 FFmpeg from a pinned upstream image and ships an x86_64 Bento4 zip. That is expected. Encode/HLS under emulation can be slow or flaky. See [Fixes and known issues](../../releases/fixes.md#amd64-media-tools-in-the-image).
+
+4. Start the services:
+
+    ```bash
+    make docker-up
+    ```
+
+5. Wait a few minutes. The first start installs frontend packages and runs migrations.
+6. Open `http://localhost`.
+7. Sign in with user `admin` and password `admin`.
+
+## Documentation on the same site
+
+Django serves the built MkDocs site at `http://localhost/documentation/` when `DEVELOPMENT_MODE` is on. The optional `docs` Compose profile builds into `site/` and watches for changes.
+
+1. Start the documentation watcher:
+
+    ```bash
+    make docs-up
+    ```
+
+2. Wait for the first build to finish. Check the logs with `make docs-logs`.
+3. Open `http://localhost/documentation/`.
+
+One-shot build without watching:
+
+```bash
+make docs-build
+```
+
+Stop the watcher with `make docs-down`. The path `/docs/` stays reserved for ReDoc at `/docs/api/` and for page slugs.
+
+## Change Python code
+
+1. Edit the Python files.
+2. Check `http://localhost`. Django reloads by itself.
+
+If Django stops because of an error, such as a `SyntaxError`, fix the error. Then restart the service:
+
+```bash
+docker compose -f docker-compose-dev.yaml restart web
+```
+
+!!! warning
+    A change to a setting needs a restart. Restart all three services that read settings:
+
+    ```bash
+    docker compose -f docker-compose-dev.yaml restart web celery_worker
+    ```
+
+    The development stack has no `celery_beat` service. Restart `celery_beat` only on a stack that has it.
+
+### Logging in development
+
+The development stack usually runs with `DEBUG=True`, so logs go to the file handler and the console at `DEBUG`.
+
+- Set `LOGLEVEL` in the environment or in `deploy/docker/local_settings.py` when you need a different level with `DEBUG=False`.
+- Leave `ENABLE_SQL_DEBUG_LOGGING` off unless you are debugging SQL. SQL logging needs both `DEBUG=True` and `ENABLE_SQL_DEBUG_LOGGING=True`.
+- Leave reverse-proxy settings commented out in Compose. Set `TRUSTED_PROXIES` only when you put a proxy in front of the stack.
+
+## Change frontend code
+
+React is a library that Django templates load. It is not a separate single-page application. Django owns the routes, the pages, the data, and the login.
+
+The code is in two places:
+
+- `frontend/src/` holds the React code.
+- `templates/` holds the Django templates. All templates extend `templates/root.html`.
+
+Each page has an entry file `frontend/src/entries/<name>.js`. The template for the page loads `static/js/<name>.js` and `static/js/_commons.js`. See [Node reference](../../reference/node.md) for the list of entries.
+
+1. Edit the files in `frontend/src/`.
+2. Open `http://localhost:8088`. The page reloads when you save.
+3. Build the bundles for port 80:
+
+    ```bash
+    make frontend-build
+    ```
+
+4. Open `http://localhost`. Check the change.
+5. Commit the changes in `static/` together with the changes in `frontend/src/`.
+
+`make frontend-build` (alias: `make build-frontend`) runs these commands:
+
+```bash
+docker compose -f docker-compose-dev.yaml exec frontend npm run dist
+cp -r frontend/dist/static/* static/
+docker compose -f docker-compose-dev.yaml restart web
+```
+
+!!! note
+    Port 80 does not show frontend changes until you build. Port 8088 and port 80 can look different. This is normal.
+
+### Styles
+
+- Put styles for more than one page in `static/css/_commons.css`.
+- Put styles for one page in `static/css/<name>.css`. The template of that page must link the file.
+
+The webpack build is set in `frontend/webpack.config.js`. It makes one bundle for each file in `frontend/src/entries/`.
+
+## Run commands in a container
+
+Open a shell in the `web` container:
+
+```bash
+docker compose -f docker-compose-dev.yaml exec web /bin/bash
+```
+
+Then run Django commands in the shell:
+
+```bash
+python manage.py shell
+```
+
+The shortcut `make admin-shell` does the same. It needs the `web` container.
+
+!!! warning
+    The `admin-shell` target in the `Makefile` runs `docker compose ps -q web` without `-f docker-compose-dev.yaml`. If you start the stack with `-f docker-compose-dev.yaml`, the shortcut can report `Web container not found`. Use the `docker compose -f docker-compose-dev.yaml exec web /bin/bash` command above.
+
+## Make targets
+
+Run these from the repository root. The development stack must be running.
+
+Pattern: `make <thing>` runs the common actions for that area; `make <thing>-<action>` runs one action. Older names such as `build-frontend` and `lint-frontend` still work as aliases.
+
+| Target | What it runs |
+|--------|--------------|
+| `make build` | `build-frontend`, `build-docs`, `build-languages`. |
+| `make docker` | Local image build (`docker-build`). |
+| `make docker-build` | Builds `mediacms-dev:latest` and `mediacms:local`. Alias: `build-docker`. |
+| `make docker-build-full` | Also builds `mediacms:full` (Whisper). |
+| `make docker-up` / `docker-down` | Start or stop the dev Compose stack. |
+| `make frontend` | `frontend-build`, `frontend-lint`, `frontend-test`. |
+| `make frontend-build` | Builds the frontend, copies it to `static/`, restarts `web`. Alias: `build-frontend`. |
+| `make lint` | `pre-commit run --all-files`. |
+| `make test` | `lint`, then backend and frontend tests. |
+| `make test-backend` | Backend tests with `pytest -n auto` and `TESTING=True`. |
+| `make test-coverage` | Backend tests with coverage. |
+| `make test-frontend` | Frontend Jest tests in CI mode. Alias: `frontend-test`. |
+| `make test-frontend-coverage` | Frontend Jest tests with coverage. |
+| `make docs` | One-shot docs build (`docs-build`). |
+| `make docs-up` / `docs-down` / `docs-logs` | Docs watcher lifecycle. |
+| `make languages` | `process_translations` in the `web` container. Alias: `build-languages`. |
+| `make admin-shell` | Shell in the `web` container. |
+
+See [Tests](tests.md) for the test commands.
+
+## Check the code style
+
+1. Install the hook once: `pre-commit install`.
+2. Install Node dependencies in each frontend package you touch (or all four):
+
+    ```bash
+    npm install --prefix frontend
+    npm install --prefix frontend-tools/video-js
+    npm install --prefix frontend-tools/video-editor
+    npm install --prefix frontend-tools/chapters-editor
+    ```
+
+3. Run all checks: `pre-commit run --all`.
+4. Fix every problem the checks report.
+
+Python uses `black`, `isort` (profile `black`), and `flake8`. JavaScript and TypeScript use Prettier (`.prettierrc`) and ESLint. Pre-commit also runs hygiene hooks (end-of-file, trailing whitespace, YAML/JSON, merge conflicts, large files, private keys). Local ESLint hooks need the package `node_modules` above. To run only the frontend ESLint hooks: `make frontend-lint` (alias: `make lint-frontend`).
+
+## Fake media for development
+
+The `web` service sets `ALLOW_POPULATE_FAKE_MEDIA` to `True`. This allows the management command `populate_fake_media`.
+
+## Stop the stack
+
+1. Press `Ctrl+C` in the terminal that runs `up`.
+2. Remove the containers when you no longer need them:
+
+    ```bash
+    docker compose -f docker-compose-dev.yaml down
+    ```
+
+!!! note
+    The database files are in `../postgres_data`, next to the repository folder. `down` does not delete them.

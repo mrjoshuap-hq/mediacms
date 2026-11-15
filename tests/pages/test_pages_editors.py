@@ -17,6 +17,7 @@ from files.models import (
     VideoChapterData,
     VideoTrimRequest,
 )
+from files.models.utils import media_uid_shard_path
 from files.tests import create_account, create_media, fixture_path
 from files.tests.media_utils import IMAGE_JPG, SMALL_VIDEO
 
@@ -179,7 +180,8 @@ class ReplaceMediaSubmitTest(TestCase):
         self.assertIn("Media file was replaced successfully", message_texts(response))
         media = Media.objects.get(pk=self.media.pk)
         self.assertNotEqual(media.media_file.name, old_file)
-        self.assertTrue(media.media_file.name.endswith(".replacement.jpg"))
+        self.assertTrue(media.media_file.name.startswith(f"original/{media_uid_shard_path(media.uid)}/source"))
+        self.assertTrue(media.media_file.name.endswith(".jpg"))
         self.assertEqual(media.state, "private")
         self.assertFalse(media.listable)
 

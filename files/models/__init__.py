@@ -8,6 +8,7 @@ from .page import Page, TinyMCEMedia  # noqa: F401
 from .playlist import Playlist, PlaylistMedia  # noqa: F401
 from .rating import Rating, RatingCategory  # noqa: F401
 from .subtitle import Language, Subtitle, TranscriptionRequest  # noqa: F401
+from .upgrade import UpgradeDecision  # noqa: F401
 from .utils import CODECS  # noqa: F401
 from .utils import ENCODE_EXTENSIONS  # noqa: F401
 from .utils import ENCODE_EXTENSIONS_KEYS  # noqa: F401
@@ -19,6 +20,13 @@ from .utils import MEDIA_TYPES_SUPPORTED  # noqa: F401
 from .utils import category_thumb_path  # noqa: F401
 from .utils import encoding_media_file_path  # noqa: F401
 from .utils import generate_uid  # noqa: F401
+from .utils import media_listing_thumbnail_file_path  # noqa: F401
+from .utils import media_poster_file_path  # noqa: F401
+from .utils import media_sprites_file_path  # noqa: F401
+from .utils import media_uid_dir  # noqa: F401
+from .utils import media_uid_shard_path  # noqa: F401
+from .utils import media_uploaded_listing_thumbnail_file_path  # noqa: F401
+from .utils import media_uploaded_poster_file_path  # noqa: F401
 from .utils import original_media_file_path  # noqa: F401
 from .utils import original_thumbnail_file_path  # noqa: F401
 from .utils import subtitles_file_path  # noqa: F401

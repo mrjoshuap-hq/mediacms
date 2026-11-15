@@ -21,6 +21,7 @@ import VideoContextMenu from '../overlays/VideoContextMenu';
 import UserPreferences from '../../utils/UserPreferences';
 import PlayerConfig from '../../config/playerConfig';
 import { AutoplayHandler } from '../../utils/AutoplayHandler';
+import { applyMediaToPlayer } from '../../utils/MediaTransition';
 import { OrientationHandler } from '../../utils/OrientationHandler';
 import { EndScreenHandler } from '../../utils/EndScreenHandler';
 import KeyboardHandler from '../../utils/KeyboardHandler';
@@ -177,7 +178,14 @@ const enableStandardButtonTooltips = (player) => {
     }, 500); // Delay to ensure all components are ready
 };
 
-function VideoJSPlayer({ videoId = 'default-video', showTitle = true, showRelated = true, showUserAvatar = true, linkTitle = true, urlTimestamp = null }) {
+function VideoJSPlayer({
+    videoId = 'default-video',
+    showTitle = true,
+    showRelated = true,
+    showUserAvatar = true,
+    linkTitle = true,
+    urlTimestamp = null,
+}) {
     const videoRef = useRef(null);
     const playerRef = useRef(null); // Track the player instance
     const userPreferences = useRef(new UserPreferences()); // User preferences instance
@@ -757,10 +765,11 @@ function VideoJSPlayer({ videoId = 'default-video', showTitle = true, showRelate
           }))
         : [];
 
-    // Function to navigate to next video
+    // Function to navigate to next video (prefer live MEDIA_DATA after soft transitions)
     const goToNextVideo = () => {
-        if (mediaData.onClickNextCallback && typeof mediaData.onClickNextCallback === 'function') {
-            mediaData.onClickNextCallback();
+        const liveMediaData = typeof window !== 'undefined' && window.MEDIA_DATA ? window.MEDIA_DATA : mediaData;
+        if (liveMediaData.onClickNextCallback && typeof liveMediaData.onClickNextCallback === 'function') {
+            liveMediaData.onClickNextCallback();
         }
     };
 
@@ -1322,9 +1331,16 @@ function VideoJSPlayer({ videoId = 'default-video', showTitle = true, showRelate
                         linkTitle: finalLinkTitle,
                     });
                     customComponents.current.endScreenHandler = endScreenHandler; // Store for cleanup
+                    // Expose early so soft next/autoplay can clean overlays before later control-bar wiring.
+                    playerRef.current.customComponents = customComponents.current;
 
                     // Inside your ready callback, replace the existing handleAutoplay code with:
                     const autoplayHandler = new AutoplayHandler(playerRef.current, mediaData, userPreferences.current);
+
+                    // Soft media transitions (autoplay/next) keep this player instance alive for fullscreen.
+                    playerRef.current.mediacmsUserPreferences = userPreferences.current;
+                    playerRef.current.mediacmsLoadMedia = (nextMediaData) =>
+                        applyMediaToPlayer(playerRef.current, nextMediaData);
 
                     // Expose the player instance globally for timestamp functionality
                     if (typeof window !== 'undefined') {
@@ -1505,7 +1521,9 @@ function VideoJSPlayer({ videoId = 'default-video', showTitle = true, showRelate
                     if (controlBarEl) {
                         // Style control bar using config values
                         controlBarEl.style.height = `${PlayerConfig.controlBar.height}em`;
-                        controlBarEl.style.fontSize = `${isTouchDevice ? PlayerConfig.controlBar.mobileFontSize : PlayerConfig.controlBar.fontSize}px`;
+                        controlBarEl.style.fontSize = `${
+                            isTouchDevice ? PlayerConfig.controlBar.mobileFontSize : PlayerConfig.controlBar.fontSize
+                        }px`;
                         controlBarEl.style.backgroundColor = PlayerConfig.controlBar.backgroundColor;
 
                         // Apply same line height to time-related controls
@@ -2355,7 +2373,7 @@ function VideoJSPlayer({ videoId = 'default-video', showTitle = true, showRelate
                         // Make the video element focusable
                         const videoElement = playerRef.current.el();
                         videoElement.setAttribute('tabindex', '0');
-                        
+
                         if (!isEmbedPlayer) {
                             videoElement.focus();
                         }
@@ -2420,7 +2438,9 @@ function VideoJSPlayer({ videoId = 'default-video', showTitle = true, showRelate
                 ref={videoRef}
                 id={videoId}
                 controls={true}
-                className={`video-js ${isEmbedPlayer ? 'vjs-fill' : 'vjs-fluid'} vjs-default-skin${currentVideo.useRoundedCorners ? ' video-js-rounded-corners' : ''}`}
+                className={`video-js ${isEmbedPlayer ? 'vjs-fill' : 'vjs-fluid'} vjs-default-skin${
+                    currentVideo.useRoundedCorners ? ' video-js-rounded-corners' : ''
+                }`}
                 preload="auto"
                 poster={currentVideo.poster}
                 tabIndex="0"
@@ -2446,7 +2466,7 @@ function VideoJSPlayer({ videoId = 'default-video', showTitle = true, showRelate
                             default={track.default}
                         />
                     ))} */}
-                {/* 
+                {/*
                 <track kind="chapters" src="/sample-chapters.vtt" /> */}
                 {/* Add chapters track */}
                 {/*  {chaptersData &&

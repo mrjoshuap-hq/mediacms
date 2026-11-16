@@ -69,6 +69,9 @@ def load_manifest(archive: Path) -> tuple[dict[str, str], dict[str, str], dict[s
         if isinstance(date, str) and DAY_RE.fullmatch(date):
             dates[filename] = date
         stamp = row.get("updated")
+        if not (isinstance(stamp, str) and stamp.strip()):
+            # Legacy catalogs recorded the timestamp as mtime_iso.
+            stamp = row.get("mtime_iso")
         if isinstance(stamp, str) and stamp.strip():
             updated[filename] = stamp.strip()
         sha = row.get("content_sha256")

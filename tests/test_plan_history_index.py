@@ -153,6 +153,37 @@ def test_legacy_catalog_only_gains_hashes():
         shutil.rmtree(work, ignore_errors=True)
 
 
+@requires_git
+def test_legacy_mtime_iso_catalog_keeps_its_timestamp():
+    work = Path(tempfile.mkdtemp(prefix="ph-legacy-mtime-"))
+    try:
+        _init(work)
+        archive = _archive(work)
+        (archive / "note.md").write_text("# Legacy\n\nbody\n", encoding="utf-8")
+        _commit(work, "add", "2024-04-04T12:00:00-05:00")
+        catalog = json.dumps(
+            [
+                {
+                    "file": "note.md",
+                    "date": "2018-08-08",
+                    "mtime_iso": "2018-08-08T01:02:03",
+                    "name": "Legacy",
+                    "overview": "",
+                    "todos": {},
+                }
+            ],
+            indent=2,
+        )
+        (archive / "manifest.json").write_text(catalog + "\n", encoding="utf-8")
+        ri.main(["--archive", str(archive)])
+        row = _rows(archive)["note.md"]
+        assert row["date"] == "2018-08-08"
+        assert row["updated"] == "2018-08-08T01:02:03"
+        assert len(row["content_sha256"]) == 64
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def test_crlf_bytes_hash_the_same_as_lf():
     text = "# Note\n\nbody\n"
     lf = Path(tempfile.mkdtemp(prefix="ph-lf-")) / "note.md"

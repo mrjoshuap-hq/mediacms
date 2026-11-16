@@ -26,3 +26,10 @@ Tool(s) and what they did:
 *Pre-deploy*
 
 *Post-deploy*
+
+
+## AI disclosure footer
+<!-- Fork-only. This is the one addition on the fork. Keep the sections above unchanged, and leave their checkboxes unticked. -->
+AI agents end the pull request description with this line. Replace `<agent name>` with the agent's name.
+
+_AI disclosure: drafted by an AI agent (<agent name>) for @mrjoshuap._

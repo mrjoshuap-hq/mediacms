@@ -50,6 +50,19 @@ def test_write_whats_new_beta_includes_fork_and_upstream(tmp_path, monkeypatch):
     assert "**admin:**" in text
     assert "## Upstream base (9.4.0)" in text
     assert "upstream only" in text
+    footer = "_AI disclosure: drafted by an AI agent (Grok Bot) for @mrjoshuap._"
+    assert text.rstrip().endswith(footer)
+    assert text.index("## Upstream base (9.4.0)") < text.index(footer)
+
+
+def test_write_whats_new_other_channel_omits_footer(tmp_path, monkeypatch):
+    mod = _load()
+    monkeypatch.setenv("DOCS_CHANNEL", "unknown-channel")
+    monkeypatch.setattr(mod, "REF", tmp_path)
+    mod.write_whats_new("## [9.4.0]\n\n* upstream only\n", "9.4.0", fork_ver="10.0.0")
+    text = (tmp_path / "whats-new.md").read_text(encoding="utf-8")
+    assert "upstream only" in text
+    assert "_AI disclosure:" not in text
 
 
 def test_write_changelog_beta_preamble(tmp_path, monkeypatch):

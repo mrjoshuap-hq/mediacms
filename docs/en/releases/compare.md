@@ -10,7 +10,7 @@ Compare **upstream MediaCMS (≤v9 / latest upstream)** with fork **10.0.0 stabl
 | Column | Means |
 |--------|-------|
 | Upstream ≤v9 | Community MediaCMS through the 9.x line (this fork tracks upstream `main` near 9.4.0) |
-| Fork 10 stable | Features that ship in stamped GHCR `:stable` / `v10.0.0.YYYYMMDD` builds from `main` |
+| Fork 10 stable | Features that ship in stamped GHCR `:stable` / `:10.0.0.YYYYMMDD[.N]` builds from `main` |
 | Fork 10 beta | Features on `mediacms-next` / `:beta` (can be ahead of stable) |
 
 When stable and beta both say Yes, beta may still be newer within the same feature. Prefer pinned tags.

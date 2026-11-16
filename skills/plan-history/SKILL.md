@@ -21,7 +21,7 @@ Skip non-MediaCMS plans (other products, homelab, unrelated repos).
 | Path | Role |
 | ---- | ---- |
 | `~/.cursor/plans/*.plan.md` | Live Cursor plans (source) |
-| `.agent/plan-history/*.plan.md` | Project archive (copies) |
+| `.agent/plan-history/*.md` | Project archive (every plan note except `INDEX.md` and `README.md`) |
 | `.agent/plan-history/INDEX.md` | Human catalog |
 | `.agent/plan-history/manifest.json` | Machine-readable metadata |
 
@@ -35,7 +35,14 @@ Preserve the original filename (e.g. `rbac_permissions_audit_ef026657.plan.md`).
 
 ```bash
 python3 skills/plan-history/scripts/refresh_index.py
+python3 skills/plan-history/scripts/refresh_index.py --archive PATH
 ```
+
+The script indexes every `*.md` file in the archive except `INDEX.md` and `README.md` (`README.md` is the folder guide). `--archive` reads and writes a different directory. `date` comes from frontmatter (`date` or `created`), then a `- Date: YYYY-MM-DD` line, then the date already stored in `manifest.json`. Only a note with none of those uses the first git commit that added the file. `updated` uses the first match: the recorded value when `content_sha256` equals the SHA-256 of the file's LF-normalised bytes; the recorded value for a legacy entry that has no hash while the file is clean (that run also stores the hash); the author date of the last commit when the file is tracked and clean; otherwise the current time, written once. The same bytes keep that `updated` on later runs, including after commit and in a fresh clone. `content_sha256` is stored only in `manifest.json`. On a clean checkout a second run leaves `INDEX.md` and `manifest.json` unchanged. A shallow clone prints a one-line warning.
+
+## Known limitations
+
+Git history is only a fallback. A shallow clone, a rename, a reused filename, a merge resolution, or a new file at an old path can attach the wrong git date or `updated` time. Set `date` in the note's frontmatter. That recorded value, then a `- Date:` line, then the committed manifest, wins over git.
 
 4. Briefly confirm archival in the reply (filename + that INDEX was refreshed). Do not commit unless the user asks.
 

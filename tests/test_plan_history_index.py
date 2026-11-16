@@ -9,11 +9,15 @@ import subprocess
 import sys
 import tempfile
 import time
+import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills" / "plan-history" / "scripts"))
 import refresh_index as ri  # noqa: E402
+
+# The CI test image has no git binary; skip the git-backed cases there.
+requires_git = unittest.skipUnless(shutil.which("git"), "git is not installed")
 
 
 def _git(repo: Path, *args: str, env: dict | None = None) -> None:
@@ -52,6 +56,7 @@ def _archive(repo: Path) -> Path:
     return archive
 
 
+@requires_git
 def test_dirty_refresh_is_stable_on_the_second_run():
     work = Path(tempfile.mkdtemp(prefix="ph-dirty-"))
     try:
@@ -69,6 +74,7 @@ def test_dirty_refresh_is_stable_on_the_second_run():
         shutil.rmtree(work, ignore_errors=True)
 
 
+@requires_git
 def test_fresh_clone_keeps_the_recorded_updated():
     work = Path(tempfile.mkdtemp(prefix="ph-clone-src-"))
     clone = Path(tempfile.mkdtemp(prefix="ph-clone-"))
@@ -91,6 +97,7 @@ def test_fresh_clone_keeps_the_recorded_updated():
         shutil.rmtree(clone, ignore_errors=True)
 
 
+@requires_git
 def test_edit_changes_only_updated_and_hash():
     work = Path(tempfile.mkdtemp(prefix="ph-edit-"))
     try:
@@ -115,6 +122,7 @@ def test_edit_changes_only_updated_and_hash():
         shutil.rmtree(work, ignore_errors=True)
 
 
+@requires_git
 def test_legacy_catalog_only_gains_hashes():
     work = Path(tempfile.mkdtemp(prefix="ph-legacy-"))
     try:

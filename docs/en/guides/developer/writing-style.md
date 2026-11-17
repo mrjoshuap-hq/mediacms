@@ -7,7 +7,9 @@ Use this guide when you write steps, warnings, and short reference text for Medi
 STE-lite is a practical subset of ASD-STE100 Simplified Technical English (STE). ASD owns ASD-STE100. See [asd-ste100.org](https://asd-ste100.org).
 
 !!! note
-    This guide does not claim compliance with ASD-STE100. The project does not use the official STE dictionary. STE-lite takes only the rules that are listed on this page.
+    This guide does not claim compliance with ASD-STE100. The project does not use the official STE dictionary. STE-lite takes only the rules that are listed on this page. ASD does not review or endorse STE-lite.
+
+The 10 rules below are in our own words. We checked them against ASD-STE100 Issue 9 (January 2025) so that they do not contradict it. To get the official standard, use the request form on the [ASD downloads page](https://asd-ste100.org/STE_downloads.html).
 
 This page adds to the [Writing guide](../../contributing/writing.md). Keep the rules of both pages. Use the [Glossary](../../contributing/glossary.md) for product terms.
 
@@ -122,7 +124,7 @@ Better:
 
 ### 7. Do not use an -ing word as a noun
 
-Use a plain verb. Say who does the action.
+Use a plain verb. Say who does the action. An -ing word is correct when it is a glossary term, such as *encoding*.
 
 Real line, from `guides/operator/manage-media.md`:
 
@@ -192,7 +194,7 @@ Use one term for each concept. The meanings come from the MediaCMS docs. The ful
 | encode profile | A set of values for one encoded version. It has an extension, a resolution, and a codec. | Do not write "encoding profile". |
 | state | The media state: public, private, or unlisted. | Use "encoding status" only for the result of encoding. |
 | listable | The media is public, encoding succeeded, and it is reviewed. | Only listable media shows in public listings. |
-| sign in | Open a session in MediaCMS. | Do not write "log in". |
+| sign in | Open a session in MediaCMS. | Do not write "log in". Keep "sign in" because the screen label is **Sign in**. |
 | Manage pages | The pages at `/manage/media`, `/manage/users`, and `/manage/comments`. | Do not call them the admin portal. |
 | admin portal | The Django administration interface at `/admin/`. | Do not call it Manage pages. |
 | content migration | Import media from another platform into MediaCMS. | Do not use it for a version change. |

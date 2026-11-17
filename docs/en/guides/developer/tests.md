@@ -116,6 +116,27 @@ Pytest discovers every `test_*.py` under the repo root except paths listed in `n
 
 Real HLS packaging needs a working `MP4HLS_COMMAND` (bento4 `mp4hls`). Tests that require it call `tests._support.bento.mp4hls_is_usable` and **skip** when the binary is missing or cannot run (for example a broken Rosetta ELF under Docker Desktop on Apple Silicon). Encoding and mocked HLS tests still run.
 
+### Plan-history catalog test
+
+`tests/test_plan_history_index.py` tests `skills/plan-history/scripts/refresh_index.py`. It does not need Django. Each case builds a small git repository in a temporary folder.
+
+| Test | What it checks |
+|------|----------------|
+| `test_dirty_refresh_is_stable_on_the_second_run` | A note with an edit that is not committed gives the same `manifest.json` on a second run, two seconds later. |
+| `test_fresh_clone_keeps_the_recorded_updated` | A note that was not committed when the catalog was written keeps its recorded `updated` value after the commit and in a fresh clone. The commit date does not replace it. |
+| `test_edit_changes_only_updated_and_hash` | An edit to a note changes only its `updated` and `content_sha256`. The `date` stays. |
+| `test_legacy_catalog_only_gains_hashes` | An entry with no `content_sha256` keeps its `date` and `updated` and gets the hash. |
+| `test_legacy_mtime_iso_catalog_keeps_its_timestamp` | An old entry that stores `mtime_iso` instead of `updated` keeps that time. |
+| `test_crlf_bytes_hash_the_same_as_lf` | The same text with CRLF line endings gives the same hash. |
+
+The first five tests need the `git` program and are skipped when it is missing. The test image that CI uses has no `git`, so only the CRLF test runs there. Run all six on a computer that has `git`:
+
+```bash
+python -m pytest tests/test_plan_history_index.py
+```
+
+For how the script works, see [Plan history archive](local-dev.md#plan-history-archive).
+
 ## Coverage matrix (primary workflows)
 
 | Workflow / surface | Owning tests |

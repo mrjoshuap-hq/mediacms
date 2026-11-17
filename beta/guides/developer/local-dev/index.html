@@ -2459,6 +2459,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#plan-history-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      Plan history archive
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stop-the-stack" class="md-nav__link">
     <span class="md-ellipsis">
       Stop the stack
@@ -3633,6 +3642,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#plan-history-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      Plan history archive
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stop-the-stack" class="md-nav__link">
     <span class="md-ellipsis">
       Stop the stack
@@ -3950,12 +3968,39 @@
 <p>Python uses <code>black</code>, <code>isort</code> (profile <code>black</code>), and <code>flake8</code>. JavaScript and TypeScript use Prettier (<code>.prettierrc</code>) and ESLint. Pre-commit also runs hygiene hooks (end-of-file, trailing whitespace, YAML/JSON, merge conflicts, large files, private keys). Local ESLint hooks need the package <code>node_modules</code> above. To run only the frontend ESLint hooks: <code>make frontend-lint</code> (alias: <code>make lint-frontend</code>).</p>
 <h2 id="fake-media-for-development">Fake media for development<a class="headerlink" href="#fake-media-for-development" title="Permanent link">&para;</a></h2>
 <p>The <code>web</code> service sets <code>ALLOW_POPULATE_FAKE_MEDIA</code> to <code>True</code>. This allows the management command <code>populate_fake_media</code>.</p>
+<h2 id="plan-history-archive">Plan history archive<a class="headerlink" href="#plan-history-archive" title="Permanent link">&para;</a></h2>
+<p>The folder <code>.agent/plan-history/</code> keeps a project copy of each Cursor plan and Architect design note. <code>INDEX.md</code> is the catalog that people read. <code>manifest.json</code> holds the same data for tools. The <code>plan-history</code> skill (<code>skills/plan-history/SKILL.md</code> in the repository) has the archive workflow. This section explains how the catalog is built.</p>
+<ul>
+<li>The script indexes every <code>*.md</code> file in the folder except <code>INDEX.md</code> and <code>README.md</code>. <code>README.md</code> is the guide for the folder. Plans from Cursor end in <code>.plan.md</code>. Other notes end in <code>.md</code>.</li>
+<li>The <code>date</code> of an entry comes from the note. The script reads the frontmatter <code>date</code> or <code>created</code> key, then a <code>- Date: YYYY-MM-DD</code> line, then the date already in <code>manifest.json</code>. Only a note with none of these gets the date of the first git commit that added the file. File modification time is not used.</li>
+<li><code>manifest.json</code> stores a <code>content_sha256</code> hash for each note. The script uses it to keep the recorded <code>updated</code> time while the note text stays the same. The hash is not a column in <code>INDEX.md</code>. The hash ignores line-ending differences (LF or CRLF).</li>
+<li>The <code>Latest snapshot</code> line in <code>INDEX.md</code> shows the newest <code>updated</code> value.</li>
+</ul>
+<p>To refresh the catalog:</p>
+<ol>
+<li>Copy the new or changed plan into <code>.agent/plan-history/</code>. Keep the file name.</li>
+<li>
+<p>Run the script from the repository root:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>python3<span class="w"> </span>skills/plan-history/scripts/refresh_index.py
+</code></pre></div>
+</li>
+<li>
+<p>Run <code>git status --porcelain .agent/plan-history</code> to see the files that changed.</p>
+</li>
+<li>Run the script a second time. On a clean checkout, the second run must change nothing.</li>
+</ol>
+<p>Add <code>--archive PATH</code> to read and write a different folder.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Git history is only a fallback. A shallow clone, a rename, a reused file name, or a merge resolution can give the wrong git date. A shallow clone prints a warning but still writes the catalog. To fix a wrong date, set <code>date</code> in the frontmatter of the note. See <strong>Known limitations</strong> in <code>skills/plan-history/SKILL.md</code>.</p>
+</div>
+<p>For the test of this script, see <a href="../tests/#plan-history-catalog-test">Tests</a>.</p>
 <h2 id="stop-the-stack">Stop the stack<a class="headerlink" href="#stop-the-stack" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Press <code>Ctrl+C</code> in the terminal that runs <code>up</code>.</li>
 <li>
 <p>Remove the containers when you no longer need them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose-dev.yaml<span class="w"> </span>down
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose-dev.yaml<span class="w"> </span>down
 </code></pre></div>
 </li>
 </ol>

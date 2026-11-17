@@ -2469,6 +2469,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Test folders">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plan-history-catalog-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      Plan-history catalog test
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3630,6 +3645,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Test folders">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plan-history-catalog-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      Plan-history catalog test
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3851,6 +3881,46 @@
 </table>
 <p>Pytest discovers every <code>test_*.py</code> under the repo root except paths listed in <code>norecursedirs</code> (so <code>migrationservice/tests/</code> is included). Some tests carry the marker <code>slow</code>. Skip them with <code>-m "not slow"</code>.</p>
 <p>Real HLS packaging needs a working <code>MP4HLS_COMMAND</code> (bento4 <code>mp4hls</code>). Tests that require it call <code>tests._support.bento.mp4hls_is_usable</code> and <strong>skip</strong> when the binary is missing or cannot run (for example a broken Rosetta ELF under Docker Desktop on Apple Silicon). Encoding and mocked HLS tests still run.</p>
+<h3 id="plan-history-catalog-test">Plan-history catalog test<a class="headerlink" href="#plan-history-catalog-test" title="Permanent link">&para;</a></h3>
+<p><code>tests/test_plan_history_index.py</code> tests <code>skills/plan-history/scripts/refresh_index.py</code>. It does not need Django. Each case builds a small git repository in a temporary folder.</p>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>What it checks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_dirty_refresh_is_stable_on_the_second_run</code></td>
+<td>A note with an edit that is not committed gives the same <code>manifest.json</code> on a second run, two seconds later.</td>
+</tr>
+<tr>
+<td><code>test_fresh_clone_keeps_the_recorded_updated</code></td>
+<td>A note that was not committed when the catalog was written keeps its recorded <code>updated</code> value after the commit and in a fresh clone. The commit date does not replace it.</td>
+</tr>
+<tr>
+<td><code>test_edit_changes_only_updated_and_hash</code></td>
+<td>An edit to a note changes only its <code>updated</code> and <code>content_sha256</code>. The <code>date</code> stays.</td>
+</tr>
+<tr>
+<td><code>test_legacy_catalog_only_gains_hashes</code></td>
+<td>An entry with no <code>content_sha256</code> keeps its <code>date</code> and <code>updated</code> and gets the hash.</td>
+</tr>
+<tr>
+<td><code>test_legacy_mtime_iso_catalog_keeps_its_timestamp</code></td>
+<td>An old entry that stores <code>mtime_iso</code> instead of <code>updated</code> keeps that time.</td>
+</tr>
+<tr>
+<td><code>test_crlf_bytes_hash_the_same_as_lf</code></td>
+<td>The same text with CRLF line endings gives the same hash.</td>
+</tr>
+</tbody>
+</table>
+<p>The first five tests need the <code>git</code> program and are skipped when it is missing. The test image that CI uses has no <code>git</code>, so only the CRLF test runs there. Run all six on a computer that has <code>git</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_plan_history_index.py
+</code></pre></div>
+<p>For how the script works, see <a href="../local-dev/#plan-history-archive">Plan history archive</a>.</p>
 <h2 id="coverage-matrix-primary-workflows">Coverage matrix (primary workflows)<a class="headerlink" href="#coverage-matrix-primary-workflows" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3916,27 +3986,27 @@
 </table>
 <h3 id="unimplemented-features-backend">Unimplemented features (backend)<a class="headerlink" href="#unimplemented-features-backend" title="Permanent link">&para;</a></h3>
 <p>When a product feature is expected but the code is stubbed or missing, add a warn-mode case with <code>@unimplemented("...")</code> from <code>tests/_support/unimplemented.py</code>. Pytest reports these as xfailed (they do not fail CI). The terminal summary prints an <strong>unimplemented feature(s) (warn-mode)</strong> section. Use this only for stubbed/absent behavior — not for tests you have not written yet. See <code>tests/unimplemented/test_stubbed_features.py</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tests._support.unimplemented</span><span class="w"> </span><span class="kn">import</span> <span class="n">unimplemented</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nd">@unimplemented</span><span class="p">(</span><span class="s2">"API uploads should reject files larger than UPLOAD_MAX_SIZE"</span><span class="p">)</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_api_upload_respects_upload_max_size</span><span class="p">():</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="k">pass</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tests._support.unimplemented</span><span class="w"> </span><span class="kn">import</span> <span class="n">unimplemented</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nd">@unimplemented</span><span class="p">(</span><span class="s2">"API uploads should reject files larger than UPLOAD_MAX_SIZE"</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_api_upload_respects_upload_max_size</span><span class="p">():</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="k">pass</span>
 </code></pre></div>
 <p>List only unimplemented cases:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose-dev.yaml<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>--env<span class="w"> </span><span class="nv">TESTING</span><span class="o">=</span>True<span class="w"> </span>-T<span class="w"> </span>web<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>unimplemented
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose-dev.yaml<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>--env<span class="w"> </span><span class="nv">TESTING</span><span class="o">=</span>True<span class="w"> </span>-T<span class="w"> </span>web<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>unimplemented
 </code></pre></div>
 <h2 id="frontend-tests">Frontend tests<a class="headerlink" href="#frontend-tests" title="Permanent link">&para;</a></h2>
 <p>Frontend tests use Jest with the <code>jsdom</code> environment. The files are in <code>frontend/tests/</code>. The settings are in <code>frontend/jest.config.js</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>make<span class="w"> </span>test-frontend
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>make<span class="w"> </span>test-frontend
 </code></pre></div>
 <p>This runs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose-dev.yaml<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-T<span class="w"> </span>frontend<span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--<span class="w"> </span>--ci
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose-dev.yaml<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-T<span class="w"> </span>frontend<span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--<span class="w"> </span>--ci
 </code></pre></div>
 <p>Run with coverage:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>make<span class="w"> </span>test-frontend-coverage
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>make<span class="w"> </span>test-frontend-coverage
 </code></pre></div>
 <p>Run one test file:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose-dev.yaml<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-T<span class="w"> </span>frontend<span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--<span class="w"> </span>--ci<span class="w"> </span>tests/utils/settings/member.test.ts
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose-dev.yaml<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-T<span class="w"> </span>frontend<span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--<span class="w"> </span>--ci<span class="w"> </span>tests/utils/settings/member.test.ts
 </code></pre></div>
 <h3 id="add-a-frontend-test">Add a frontend test<a class="headerlink" href="#add-a-frontend-test" title="Permanent link">&para;</a></h3>
 <ol>

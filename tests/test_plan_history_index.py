@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills" / "plan-history" / "scripts"))
 import refresh_index as ri  # noqa: E402
 
-# The CI test image has no git binary; skip the git-backed cases there.
+# Skip the git-backed cases on images without git (the dev/test image installs it).
 requires_git = unittest.skipUnless(shutil.which("git"), "git is not installed")
 
 
@@ -182,6 +182,46 @@ def test_legacy_mtime_iso_catalog_keeps_its_timestamp():
         assert len(row["content_sha256"]) == 64
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+@requires_git
+def test_dirty_detection_handles_arrow_in_filename_and_renames():
+    work = Path(tempfile.mkdtemp(prefix="ph-arrow-"))
+    try:
+        _init(work)
+        archive = _archive(work)
+        (archive / "a -> b.md").write_text("# Arrow\n\nbody\n", encoding="utf-8")
+        (archive / "old.md").write_text("# Old\n\nbody\n", encoding="utf-8")
+        (archive / "clean.md").write_text("# Clean\n\nbody\n", encoding="utf-8")
+        _commit(work, "add", "2026-01-01T10:00:00-05:00")
+        (archive / "a -> b.md").write_text("# Arrow\n\nedited\n", encoding="utf-8")
+        _git(work, "mv", str(archive / "old.md"), str(archive / "new.md"))
+        assert ri.dirty_names(archive, work) == {"a -> b.md", "old.md", "new.md"}
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_load_manifest_falls_back_to_legacy_mtime_iso():
+    archive = Path(tempfile.mkdtemp(prefix="ph-manifest-"))
+    try:
+        rows = [
+            {"file": "legacy.md", "date": "2018-08-08", "mtime_iso": "2018-08-08T01:02:03"},
+            {
+                "file": "current.md",
+                "date": "2019-09-09",
+                "updated": "2019-09-09T04:05:06-05:00",
+                "mtime_iso": "ignored",
+            },
+        ]
+        (archive / "manifest.json").write_text(json.dumps(rows), encoding="utf-8")
+        dates, updated, _shas = ri.load_manifest(archive)
+        assert dates == {"legacy.md": "2018-08-08", "current.md": "2019-09-09"}
+        assert updated == {
+            "legacy.md": "2018-08-08T01:02:03",
+            "current.md": "2019-09-09T04:05:06-05:00",
+        }
+    finally:
+        shutil.rmtree(archive, ignore_errors=True)
 
 
 def test_crlf_bytes_hash_the_same_as_lf():

@@ -9,7 +9,7 @@ Use these guides when you change the MediaCMS code. You run MediaCMS on your com
 | Run the backend and frontend tests | [Tests](tests.md) |
 | Add or change a text that users read in the interface | [Translations](translations.md) |
 | Add a page to this documentation | [Add a documentation page](add-docs-page.md) |
-| Write steps and warnings in simple English | [Writing style: STE-lite](writing-style.md) |
+| Write steps and warnings in House Style | [House Style](house-style.md) |
 | Look up Python helpers and permission classes | [Python reference](../../reference/python.md) |
 | Look up frontend entry points | [Node reference](../../reference/node.md) |
 

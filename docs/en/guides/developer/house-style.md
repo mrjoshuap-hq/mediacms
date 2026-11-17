@@ -1,33 +1,32 @@
-# Writing style: STE-lite
+# House Style
 
-Use this guide when you write steps, warnings, and short reference text for MediaCMS. STE-lite helps the reader do each step correctly.
+Use this guide when you write steps, warnings, and short reference text for MediaCMS. House Style helps the reader do each step correctly.
+
+## What House Style is
+
+House Style is the company's writing rules. The shared word list is the **HQ Lexicon** in the bot-journal [`shared/style/`](https://github.com/mrjoshuap/bot-journal/tree/main/shared/style) folder (roadmap R-036, [bot-journal #224](https://github.com/mrjoshuap/bot-journal/pull/224)).
+
+ASD-STE100 Simplified Technical English is reference material only. ASD owns ASD-STE100. See [asd-ste100.org](https://asd-ste100.org).
 
 !!! note
-    The name "STE-lite" is a placeholder. Marketing, PR & Brand Lead will rename this guide in a later change.
+    This guide does not claim compliance with ASD-STE100. The project does not use the official STE dictionary. House Style takes only the rules that are listed on this page. ASD does not review or endorse House Style or this project.
 
-## What STE-lite is
+The 10 rules below are in our own words. We checked them against ASD-STE100 Issue 9 (January 2025), as reference material only, so that they do not contradict it. To get the official standard, use the request form on the [ASD downloads page](https://asd-ste100.org/STE_downloads.html).
 
-STE-lite is a practical subset of ASD-STE100 Simplified Technical English (STE). ASD owns ASD-STE100. See [asd-ste100.org](https://asd-ste100.org).
-
-!!! note
-    This guide does not claim compliance with ASD-STE100. The project does not use the official STE dictionary. STE-lite takes only the rules that are listed on this page. ASD does not review or endorse STE-lite.
-
-The 10 rules below are in our own words. We checked them against ASD-STE100 Issue 9 (January 2025) so that they do not contradict it. To get the official standard, use the request form on the [ASD downloads page](https://asd-ste100.org/STE_downloads.html).
-
-This page adds to the [Writing guide](../../contributing/writing.md). Keep the rules of both pages. Use the [Glossary](../../contributing/glossary.md) for product terms.
+This page adds to the [Writing guide](../../contributing/writing.md). Keep the rules of both pages. For company-wide words and meanings, use the HQ Lexicon. For MediaCMS product terms, use the short glossary on this page and the [Glossary](../../contributing/glossary.md).
 
 This guide is a trial. Maintainers stop the trial if the text is harder to read or if it slows the work.
 
-## Where STE-lite applies
+## Where House Style applies
 
-Use STE-lite in these places:
+Use House Style in these places:
 
 - Procedures: install, upgrade, and how-to steps.
 - Warnings and cautions.
 - Issue forms.
 - The quick-start in the README.
 
-Do not use STE-lite in these places:
+Do not use House Style in these places:
 
 - Design documents.
 - Long explanations, such as release notes and the history of a change.
@@ -104,7 +103,7 @@ Better:
 
 ### 5. Use one word for one meaning
 
-Choose one term for each concept. Keep it on every page. Add new terms to the [Glossary](../../contributing/glossary.md).
+Choose one term for each concept. Keep it on every page. Add company-wide terms to the HQ Lexicon. Add MediaCMS product terms to the [Glossary](../../contributing/glossary.md).
 
 Example:
 
@@ -182,11 +181,18 @@ Example:
 !!! note
     The first real line in rule 10 uses the passive voice. Rule 4 shows the better form.
 
-## Company lexicon
+## Docs-specific glossary
 
-The company keeps one shared list of words, terms, and acronyms. Each term has one meaning. Read the [company lexicon](https://github.com/mrjoshuap/bot-journal/tree/main/shared/style) before you add a new term. Propose a new term in a pull request to that list.
+The company source of truth for shared words, terms, and acronyms is the **HQ Lexicon** in bot-journal [`shared/style/`](https://github.com/mrjoshuap/bot-journal/tree/main/shared/style) (roadmap R-036, [PR #224](https://github.com/mrjoshuap/bot-journal/pull/224)). Propose new company terms there.
 
-Use the [Glossary](../../contributing/glossary.md) for MediaCMS product terms.
+The table below is only for terms that the MediaCMS docs need. The fuller product list is in the [Glossary](../../contributing/glossary.md).
+
+| Term | Meaning | Note |
+|------|---------|------|
+| state | The media state: public, private, or unlisted. | Use "encoding status" only for the result of encoding. |
+| sign in | Open a session in MediaCMS. | Do not write "log in". Keep "sign in" because the screen label is **Sign in**. |
+| Manage pages | The pages at `/manage/media`, `/manage/users`, and `/manage/comments`. | Do not call them the admin portal. |
+| admin portal | The Django administration interface at `/admin/`. | Do not call it Manage pages. |
 
 ## Advisory checker
 
@@ -196,4 +202,5 @@ A style checker may come later. It will give warnings about long sentences and p
 
 - [Writing guide](../../contributing/writing.md)
 - [Glossary](../../contributing/glossary.md)
+- [HQ Lexicon](https://github.com/mrjoshuap/bot-journal/tree/main/shared/style) in bot-journal `shared/style/` ([PR #224](https://github.com/mrjoshuap/bot-journal/pull/224), still a draft)
 - [Add a documentation page](add-docs-page.md)

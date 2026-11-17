@@ -4,7 +4,7 @@ Use this guide when you write steps, warnings, and short reference text for Medi
 
 ## What House Style is
 
-House Style is the company's writing rules. The shared word list is the **HQ Lexicon** in the bot-journal [`shared/style/`](https://github.com/mrjoshuap/bot-journal/tree/main/shared/style) folder (roadmap R-036, [bot-journal #224](https://github.com/mrjoshuap/bot-journal/pull/224)).
+House Style is the company's writing rules. The company page is in bot-journal [`shared/style/house-style.md`](https://github.com/mrjoshuap/bot-journal/blob/main/shared/style/house-style.md) ([bot-journal #230](https://github.com/mrjoshuap/bot-journal/pull/230)). The shared word list is the **HQ Lexicon** in [`shared/style/lexicon.md`](https://github.com/mrjoshuap/bot-journal/blob/main/shared/style/lexicon.md) (roadmap R-036).
 
 ASD-STE100 Simplified Technical English is reference material only. ASD owns ASD-STE100. See [asd-ste100.org](https://asd-ste100.org).
 
@@ -183,7 +183,7 @@ Example:
 
 ## Docs-specific glossary
 
-The company source of truth for shared words, terms, and acronyms is the **HQ Lexicon** in bot-journal [`shared/style/`](https://github.com/mrjoshuap/bot-journal/tree/main/shared/style) (roadmap R-036, [PR #224](https://github.com/mrjoshuap/bot-journal/pull/224)). Propose new company terms there.
+The company writing rules are in bot-journal [`shared/style/house-style.md`](https://github.com/mrjoshuap/bot-journal/blob/main/shared/style/house-style.md) ([bot-journal #230](https://github.com/mrjoshuap/bot-journal/pull/230)). The company source of truth for shared words, terms, and acronyms is the **HQ Lexicon** in [`shared/style/lexicon.md`](https://github.com/mrjoshuap/bot-journal/blob/main/shared/style/lexicon.md). Propose new company terms there.
 
 The table below is only for terms that the MediaCMS docs need. The fuller product list is in the [Glossary](../../contributing/glossary.md).
 
@@ -202,5 +202,6 @@ A style checker may come later. It will give warnings about long sentences and p
 
 - [Writing guide](../../contributing/writing.md)
 - [Glossary](../../contributing/glossary.md)
-- [HQ Lexicon](https://github.com/mrjoshuap/bot-journal/tree/main/shared/style) in bot-journal `shared/style/` ([PR #224](https://github.com/mrjoshuap/bot-journal/pull/224), still a draft)
+- [House Style](https://github.com/mrjoshuap/bot-journal/blob/main/shared/style/house-style.md) in bot-journal `shared/style/house-style.md` ([bot-journal #230](https://github.com/mrjoshuap/bot-journal/pull/230))
+- [HQ Lexicon](https://github.com/mrjoshuap/bot-journal/blob/main/shared/style/lexicon.md) in bot-journal `shared/style/lexicon.md`
 - [Add a documentation page](add-docs-page.md)

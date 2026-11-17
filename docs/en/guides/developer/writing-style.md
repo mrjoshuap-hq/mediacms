@@ -2,6 +2,9 @@
 
 Use this guide when you write steps, warnings, and short reference text for MediaCMS. STE-lite helps the reader do each step correctly.
 
+!!! note
+    The name "STE-lite" is a placeholder. Marketing, PR & Brand Lead will rename this guide in a later change.
+
 ## What STE-lite is
 
 STE-lite is a practical subset of ASD-STE100 Simplified Technical English (STE). ASD owns ASD-STE100. See [asd-ste100.org](https://asd-ste100.org).
@@ -179,26 +182,11 @@ Example:
 !!! note
     The first real line in rule 10 uses the passive voice. Rule 4 shows the better form.
 
-## Starter glossary
+## Company lexicon
 
-Use one term for each concept. The meanings come from the MediaCMS docs. The full list is in the [Glossary](../../contributing/glossary.md).
+The company keeps one shared list of words, terms, and acronyms. Each term has one meaning. Read the [company lexicon](https://github.com/mrjoshuap/bot-journal/tree/main/shared/style) before you add a new term. Propose a new term in a pull request to that list.
 
-| Term | Meaning | Note |
-|------|---------|------|
-| `mediacms-next` | The branch of the fork that builds the beta line. Its image tag is `:beta`. | Write it in a code span. |
-| stable | The builds that ship from `main`. Their image tag is `:stable`. | Do not use it for `mediacms-next`. |
-| media | One uploaded video, audio, image, or PDF item. | Use "media item" for one item. |
-| upload | Add a file to MediaCMS with **Upload media**. | Use it as a verb or as a noun. |
-| encode | Make the encoded versions of a video. | The verb. |
-| encoding | The work of encoding a video into profiles and HLS. | `Encoding` in a code span is one record of an encoded version. |
-| encode profile | A set of values for one encoded version. It has an extension, a resolution, and a codec. | Do not write "encoding profile". |
-| state | The media state: public, private, or unlisted. | Use "encoding status" only for the result of encoding. |
-| listable | The media is public, encoding succeeded, and it is reviewed. | Only listable media shows in public listings. |
-| sign in | Open a session in MediaCMS. | Do not write "log in". Keep "sign in" because the screen label is **Sign in**. |
-| Manage pages | The pages at `/manage/media`, `/manage/users`, and `/manage/comments`. | Do not call them the admin portal. |
-| admin portal | The Django administration interface at `/admin/`. | Do not call it Manage pages. |
-| content migration | Import media from another platform into MediaCMS. | Do not use it for a version change. |
-| site upgrade | Move an existing MediaCMS install to a new MediaCMS version. | Do not use it for an import. |
+Use the [Glossary](../../contributing/glossary.md) for MediaCMS product terms.
 
 ## Advisory checker
 

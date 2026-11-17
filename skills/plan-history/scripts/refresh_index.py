@@ -178,17 +178,26 @@ def collect_history(archive: Path, root: Path) -> tuple[dict[str, str], dict[str
 
 
 def dirty_names(archive: Path, root: Path) -> set[str]:
-    output = git_stdout(archive, "status", "--porcelain", "--untracked-files=all", "--", ".")
+    """Names of archive notes with uncommitted changes, from NUL-separated porcelain output."""
+    output = git_stdout(archive, "status", "--porcelain", "-z", "--untracked-files=all", "--", ".")
     if output is None:
         return set()
     names: set[str] = set()
-    for line in output.splitlines():
-        if len(line) < 4:
+    records = output.split("\0")
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if len(record) < 4:
             continue
-        payload = line[3:]
-        parts = payload.split(" -> ") if " -> " in payload else [payload]
-        for part in parts:
-            name = entry_name(part, archive, root)
+        paths = [record[3:]]
+        # Renames and copies are followed by a separate record holding the original path.
+        if record[0] in "RC" or record[1] in "RC":
+            if index < len(records):
+                paths.append(records[index])
+                index += 1
+        for path in paths:
+            name = entry_name(path, archive, root)
             if name:
                 names.add(name)
     return names

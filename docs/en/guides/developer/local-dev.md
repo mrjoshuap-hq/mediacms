@@ -226,6 +226,34 @@ Python uses `black`, `isort` (profile `black`), and `flake8`. JavaScript and Typ
 
 The `web` service sets `ALLOW_POPULATE_FAKE_MEDIA` to `True`. This allows the management command `populate_fake_media`.
 
+## Plan history archive
+
+The folder `.agent/plan-history/` keeps a project copy of each Cursor plan and Architect design note. `INDEX.md` is the catalog that people read. `manifest.json` holds the same data for tools. The `plan-history` skill (`skills/plan-history/SKILL.md` in the repository) has the archive workflow. This section explains how the catalog is built.
+
+- The script indexes every `*.md` file in the folder except `INDEX.md` and `README.md`. `README.md` is the guide for the folder. Plans from Cursor end in `.plan.md`. Other notes end in `.md`.
+- The `date` of an entry comes from the note. The script reads the frontmatter `date` or `created` key, then a `- Date: YYYY-MM-DD` line, then the date already in `manifest.json`. Only a note with none of these gets the date of the first git commit that added the file. File modification time is not used.
+- `manifest.json` stores a `content_sha256` hash for each note. The script uses it to keep the recorded `updated` time while the note text stays the same. The hash is not a column in `INDEX.md`. The hash ignores line-ending differences (LF or CRLF).
+- The `Latest snapshot` line in `INDEX.md` shows the newest `updated` value.
+
+To refresh the catalog:
+
+1. Copy the new or changed plan into `.agent/plan-history/`. Keep the file name.
+2. Run the script from the repository root:
+
+    ```bash
+    python3 skills/plan-history/scripts/refresh_index.py
+    ```
+
+3. Run `git status --porcelain .agent/plan-history` to see the files that changed.
+4. Run the script a second time. On a clean checkout, the second run must change nothing.
+
+Add `--archive PATH` to read and write a different folder.
+
+!!! note
+    Git history is only a fallback. A shallow clone, a rename, a reused file name, or a merge resolution can give the wrong git date. A shallow clone prints a warning but still writes the catalog. To fix a wrong date, set `date` in the frontmatter of the note. See **Known limitations** in `skills/plan-history/SKILL.md`.
+
+For the test of this script, see [Tests](tests.md#plan-history-catalog-test).
+
 ## Stop the stack
 
 1. Press `Ctrl+C` in the terminal that runs `up`.

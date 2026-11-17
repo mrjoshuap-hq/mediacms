@@ -5,7 +5,7 @@ description: Fork-only maintainer rules for branch targets, upstream pull reques
 
 # Maintainer
 
-Fork-only supplement for Joshua's rules on `mrjoshuap/mediacms`. It may add or narrow rules. It must not contradict upstream rules for anything sent upstream, `AGENTS.md`, or a domain skill. On a conflict, stop, leave the authoritative file unchanged, and open an issue. The full precedence list is in `AGENTS.md` under "Supplements and precedence".
+Fork-only supplement for Joshua's rules on `mrjoshuap-hq/mediacms`. It may add or narrow rules. It must not contradict upstream rules for anything sent upstream, `AGENTS.md`, or a domain skill. On a conflict, stop, leave the authoritative file unchanged, and open an issue. The full precedence list is in `AGENTS.md` under "Supplements and precedence".
 
 `skills/github-orchestration` (issue #8) does not exist yet. When it lands, it must reference the AI disclosure rule below. Do not create that skill from this one.
 

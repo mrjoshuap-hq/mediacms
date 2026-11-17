@@ -26,22 +26,22 @@ The MediaCMS name is the upstream project's mark.
 
 | | v10 (this fork, beta) | v9 (upstream) |
 | --- | --- | --- |
-| Release | [![v10 release](https://img.shields.io/github/v/release/mrjoshuap/mediacms?include_prereleases)](https://github.com/mrjoshuap/mediacms/releases) | [![v9 release](https://img.shields.io/github/v/release/mediacms-io/mediacms?color=green)](https://github.com/mediacms-io/mediacms/releases/) |
-| CI | [![v10 CI](https://img.shields.io/github/actions/workflow/status/mrjoshuap/mediacms/ci.yml?branch=mediacms-next)](https://github.com/mrjoshuap/mediacms/actions/workflows/ci.yml) | |
-| Release workflow | [![v10 Release workflow](https://img.shields.io/github/actions/workflow/status/mrjoshuap/mediacms/release.yml?branch=mediacms-next)](https://github.com/mrjoshuap/mediacms/actions/workflows/release.yml) | |
-| Docs workflow | [![v10 Docs workflow](https://img.shields.io/github/actions/workflow/status/mrjoshuap/mediacms/docs.yml?branch=mediacms-next)](https://github.com/mrjoshuap/mediacms/actions/workflows/docs.yml) | |
+| Release | [![v10 release](https://img.shields.io/github/v/release/mrjoshuap-hq/mediacms?include_prereleases)](https://github.com/mrjoshuap-hq/mediacms/releases) | [![v9 release](https://img.shields.io/github/v/release/mediacms-io/mediacms?color=green)](https://github.com/mediacms-io/mediacms/releases/) |
+| CI | [![v10 CI](https://img.shields.io/github/actions/workflow/status/mrjoshuap-hq/mediacms/ci.yml?branch=mediacms-next)](https://github.com/mrjoshuap-hq/mediacms/actions/workflows/ci.yml) | |
+| Release workflow | [![v10 Release workflow](https://img.shields.io/github/actions/workflow/status/mrjoshuap-hq/mediacms/release.yml?branch=mediacms-next)](https://github.com/mrjoshuap-hq/mediacms/actions/workflows/release.yml) | |
+| Docs workflow | [![v10 Docs workflow](https://img.shields.io/github/actions/workflow/status/mrjoshuap-hq/mediacms/docs.yml?branch=mediacms-next)](https://github.com/mrjoshuap-hq/mediacms/actions/workflows/docs.yml) | |
 | Docker Hub | | [![Docker Hub pulls](https://img.shields.io/docker/pulls/mediacms/mediacms)](https://hub.docker.com/r/mediacms/mediacms) |
 
 ## v9 and v10
 
 | | v10 (this fork, beta) | v9 (upstream) |
 | --- | --- | --- |
-| Line | Beta branch [`mediacms-next`](https://github.com/mrjoshuap/mediacms/tree/mediacms-next). Stable branch [`main`](https://github.com/mrjoshuap/mediacms/tree/main). No stable release yet. | [`main`](https://github.com/mediacms-io/mediacms/tree/main) on [mediacms-io/mediacms](https://github.com/mediacms-io/mediacms). Release v9.4.0. |
-| Releases | Beta pre-releases only. Tag pattern `v10.0.0.YYYYMMDD[.N]` (moving to `-beta.N` per [#90](https://github.com/mrjoshuap/mediacms/issues/90)). [Releases](https://github.com/mrjoshuap/mediacms/releases). | Current release [v9.4.0](https://github.com/mediacms-io/mediacms/releases/tag/v9.4.0). |
-| Images | [`ghcr.io/mrjoshuap/mediacms`](https://github.com/mrjoshuap/mediacms/pkgs/container/mediacms) (base) and [`ghcr.io/mrjoshuap/mediacms-full`](https://github.com/mrjoshuap/mediacms/pkgs/container/mediacms-full) (Whisper). Tags: `:beta` (same digest as `:mediacms-next`), `:stable` (not published yet), pin `:10.0.0.YYYYMMDD[.N]`. | Docker Hub [`mediacms/mediacms`](https://hub.docker.com/r/mediacms/mediacms). |
+| Line | Beta branch [`mediacms-next`](https://github.com/mrjoshuap-hq/mediacms/tree/mediacms-next). Stable branch [`main`](https://github.com/mrjoshuap-hq/mediacms/tree/main). No stable release yet. | [`main`](https://github.com/mediacms-io/mediacms/tree/main) on [mediacms-io/mediacms](https://github.com/mediacms-io/mediacms). Release v9.4.0. |
+| Releases | Beta pre-releases only. Tag pattern `v10.0.0.YYYYMMDD[.N]` (moving to `-beta.N` per [#90](https://github.com/mrjoshuap-hq/mediacms/issues/90)). [Releases](https://github.com/mrjoshuap-hq/mediacms/releases). | Current release [v9.4.0](https://github.com/mediacms-io/mediacms/releases/tag/v9.4.0). |
+| Images | [`ghcr.io/mrjoshuap-hq/mediacms`](https://github.com/mrjoshuap-hq/mediacms/pkgs/container/mediacms) (base) and [`ghcr.io/mrjoshuap-hq/mediacms-full`](https://github.com/mrjoshuap-hq/mediacms/pkgs/container/mediacms-full) (Whisper). Tags: `:beta` (same digest as `:mediacms-next`), `:stable` (not published yet), pin `:10.0.0.YYYYMMDD[.N]`. | Docker Hub [`mediacms/mediacms`](https://hub.docker.com/r/mediacms/mediacms). |
 | Install | [Install with Docker](docs/en/getting-started/install.md#fork-beta-and-stable-images-ghcr), section Fork beta and stable images (GHCR). Commands are on that page. | `git clone` of [mediacms-io/mediacms](https://github.com/mediacms-io/mediacms), then `docker compose up`. See the [upstream Docker installation](https://github.com/mediacms-io/mediacms/blob/main/docs/admins_docs.md#3-docker-installation). |
-| Docs | This repository: [`docs/en/`](docs/en/) and the [published docs](https://mrjoshuap.github.io/mediacms/). | [Upstream docs](https://github.com/mediacms-io/mediacms/tree/main/docs). |
-| Community | [Issues](https://github.com/mrjoshuap/mediacms/issues) and [discussions](https://github.com/mrjoshuap/mediacms/discussions) on this fork. | Upstream community: [discussions](https://github.com/mediacms-io/mediacms/discussions) and [show and tell](https://github.com/mediacms-io/mediacms/discussions/categories/show-and-tell). |
+| Docs | This repository: [`docs/en/`](docs/en/) and the [published docs](https://mrjoshuap-hq.github.io/mediacms/). | [Upstream docs](https://github.com/mediacms-io/mediacms/tree/main/docs). |
+| Community | [Issues](https://github.com/mrjoshuap-hq/mediacms/issues) and [discussions](https://github.com/mrjoshuap-hq/mediacms/discussions) on this fork. | Upstream community: [discussions](https://github.com/mediacms-io/mediacms/discussions) and [show and tell](https://github.com/mediacms-io/mediacms/discussions/categories/show-and-tell). |
 
 ## Screenshots
 
@@ -118,7 +118,7 @@ Deploy steps are listed under [Documentation](#documentation).
 
 ## Documentation
 
-The documentation source is [`docs/en/`](docs/en/). The published site is [mrjoshuap.github.io/mediacms](https://mrjoshuap.github.io/mediacms/).
+The documentation source is [`docs/en/`](docs/en/). The published site is [mrjoshuap-hq.github.io/mediacms](https://mrjoshuap-hq.github.io/mediacms/).
 
 Build it with MkDocs (see [`mkdocs.yml`](mkdocs.yml) and [`.github/workflows/docs.yml`](.github/workflows/docs.yml)).
 
@@ -154,8 +154,8 @@ These sites are published examples from upstream MediaCMS and its community. Thi
 
 ## How to contribute
 
-- Report bugs and request changes in [issues](https://github.com/mrjoshuap/mediacms/issues) on this repository.
-- Use [discussions](https://github.com/mrjoshuap/mediacms/discussions) on this repository.
+- Report bugs and request changes in [issues](https://github.com/mrjoshuap-hq/mediacms/issues) on this repository.
+- Use [discussions](https://github.com/mrjoshuap-hq/mediacms/discussions) on this repository.
 - Write about the project, or share it.
 - Star this repository.
 - Add a function, open a pull request, or fix an issue.
@@ -164,5 +164,5 @@ These sites are published examples from upstream MediaCMS and its community. Thi
 
 Contact this fork through GitHub:
 
-- [Issues](https://github.com/mrjoshuap/mediacms/issues)
-- [Discussions](https://github.com/mrjoshuap/mediacms/discussions)
+- [Issues](https://github.com/mrjoshuap-hq/mediacms/issues)
+- [Discussions](https://github.com/mrjoshuap-hq/mediacms/discussions)

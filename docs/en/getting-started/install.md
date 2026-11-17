@@ -72,24 +72,27 @@ Build them with `make docker-build` (and `make docker-build-full` for Whisper).
 This fork publishes images to GitHub Container Registry. Override the Compose variables instead of editing every `image:` line:
 
 ```bash
-export MEDIACMS_IMAGE=ghcr.io/mrjoshuap/mediacms:beta
-export MEDIACMS_FULL_IMAGE=ghcr.io/mrjoshuap/mediacms-full:beta
+export MEDIACMS_IMAGE=ghcr.io/mrjoshuap-hq/mediacms:beta
+export MEDIACMS_FULL_IMAGE=ghcr.io/mrjoshuap-hq/mediacms-full:beta
 docker compose pull
 docker compose up
 ```
 
 | Pull tag | Meaning |
 |----------|---------|
-| `ghcr.io/mrjoshuap/mediacms:beta` | Latest successful beta **base** image |
-| `ghcr.io/mrjoshuap/mediacms-full:beta` | Latest successful beta **full** image (Whisper) |
-| `ghcr.io/mrjoshuap/mediacms:mediacms-next` | Same digest as `:beta` (branch alias) |
-| `ghcr.io/mrjoshuap/mediacms:stable` | Latest stable **base** release |
-| `ghcr.io/mrjoshuap/mediacms-full:stable` | Latest stable **full** release |
-| `ghcr.io/mrjoshuap/mediacms:10.0.0.YYYYMMDD[.N]` | Immutable pin for one release |
-| `ghcr.io/mrjoshuap/mediacms:upgrade-audit-beta` | Base image alias for beta upgrade drills |
-| `ghcr.io/mrjoshuap/mediacms:upgrade-audit` | Base image alias for stable upgrade drills |
+| `ghcr.io/mrjoshuap-hq/mediacms:beta` | Latest successful beta **base** image |
+| `ghcr.io/mrjoshuap-hq/mediacms-full:beta` | Latest successful beta **full** image (Whisper) |
+| `ghcr.io/mrjoshuap-hq/mediacms:mediacms-next` | Same digest as `:beta` (branch alias) |
+| `ghcr.io/mrjoshuap-hq/mediacms:stable` | Latest stable **base** release |
+| `ghcr.io/mrjoshuap-hq/mediacms-full:stable` | Latest stable **full** release |
+| `ghcr.io/mrjoshuap-hq/mediacms:10.0.0.YYYYMMDD[.N]` | Immutable pin for one release |
+| `ghcr.io/mrjoshuap-hq/mediacms:upgrade-audit-beta` | Base image alias for beta upgrade drills |
+| `ghcr.io/mrjoshuap-hq/mediacms:upgrade-audit` | Base image alias for stable upgrade drills |
 
 Beta builds publish a GitHub **pre-release** on every push to `mediacms-next`. Stable releases publish only when a Git stamp tag `v10.0.0.YYYYMMDD` (or `v10.0.0.YYYYMMDD.N` for a same-day emergency) is pushed from `main`. The product base version lives in `version/FORK_VERSION`. The Git tag keeps the `v` prefix. The GHCR image tag drops it (`10.0.0.YYYYMMDD` or `10.0.0.YYYYMMDD.N`).
+
+!!! note "Images published before the move to mrjoshuap-hq"
+    The repository moved from `mrjoshuap/mediacms` to `mrjoshuap-hq/mediacms`. New images publish under `ghcr.io/mrjoshuap-hq/`. Images published before the move stay under `ghcr.io/mrjoshuap/mediacms` and `ghcr.io/mrjoshuap/mediacms-full`, and the old names do not redirect. Switch your `MEDIACMS_IMAGE` and `MEDIACMS_FULL_IMAGE` values to the new names to get new builds.
 
 Upstream Docker Hub images remain available as `MEDIACMS_IMAGE=mediacms/mediacms:latest` if you want them.
 

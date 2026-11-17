@@ -187,6 +187,12 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/guides/developer/architecture/"/>
     </url>
     <url>
+        <loc>https://mrjoshuap.github.io/mediacms/latest/guides/developer/house-style/</loc>
+        <lastmod>2026-11-17</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://mrjoshuap.github.io/mediacms/latest/guides/developer/house-style/"/>
+    </url>
+    <url>
         <loc>https://mrjoshuap.github.io/mediacms/latest/guides/developer/local-dev/</loc>
         <lastmod>2026-11-17</lastmod>
         <changefreq>daily</changefreq>

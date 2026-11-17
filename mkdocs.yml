@@ -166,6 +166,7 @@ nav:
                 - Tests: guides/developer/tests.md
                 - Translations: guides/developer/translations.md
                 - Add a documentation page: guides/developer/add-docs-page.md
+                - House Style: guides/developer/house-style.md
     - Scenarios:
           - scenarios/index.md
           - Anonymous browse: scenarios/anonymous-browse.md

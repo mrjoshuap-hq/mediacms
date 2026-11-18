@@ -3,7 +3,7 @@
 Use this section to compare **upstream MediaCMS (≤v9 / latest upstream)** with the **mrjoshuap fork 10.0.0** lines (**stable** and **beta**), then find upgrade and migration tips.
 
 !!! danger "Beta is a moving target"
-    The beta line (`mediacms-next`, `ghcr.io/mrjoshuap/mediacms:beta`) publishes a GitHub pre-release on **every push**. Models, permissions, admin screens, frontend bundles, and docs can change without a long notice period. Do not use `:beta` as a production pin. Use a date-stamped image tag (`:10.0.0.YYYYMMDD[.N]`) or `:stable` when you need a fixed build.
+    The beta line (`mediacms-next`, `ghcr.io/mrjoshuap-hq/mediacms:beta`) publishes a GitHub pre-release on **every push**. Models, permissions, admin screens, frontend bundles, and docs can change without a long notice period. Do not use `:beta` as a production pin. Use a date-stamped image tag (`:10.0.0.YYYYMMDD[.N]`) or `:stable` when you need a fixed build.
 
 !!! danger "Upgrade can change who can do what"
     Fork 10 realigns global roles and media ACLs with the roles and permissions guides. Existing editors, pending users, shares, and RBAC groups can lose or gain access. Read [Permission access changes](../guides/admin/permissions-changes.md) and [Upgrade tips](upgrade-tips.md) before you cut over.
@@ -16,8 +16,8 @@ Use this section to compare **upstream MediaCMS (≤v9 / latest upstream)** with
 | Line | Typical image / branch | Cadence | Use when |
 |------|------------------------|---------|----------|
 | Upstream ≤v9 / latest | `mediacms/mediacms` on Docker Hub; [mediacms-io/mediacms](https://github.com/mediacms-io/mediacms) | Upstream releases | You want the community baseline |
-| Fork 10.0.0 **stable** | `ghcr.io/mrjoshuap/mediacms:stable` (and `:full`); stamp tags from `main` | Stamped tags only | You want fork features with a fixed digest |
-| Fork 10.0.0 **beta** | `ghcr.io/mrjoshuap/mediacms:beta` / `:mediacms-next` | Every push to `mediacms-next` | You test early; you accept churn |
+| Fork 10.0.0 **stable** | `ghcr.io/mrjoshuap-hq/mediacms:stable` (and `:full`); stamp tags from `main` | Stamped tags only | You want fork features with a fixed digest |
+| Fork 10.0.0 **beta** | `ghcr.io/mrjoshuap-hq/mediacms:beta` / `:mediacms-next` | Every push to `mediacms-next` | You test early; you accept churn |
 
 Legend used in comparison tables:
 

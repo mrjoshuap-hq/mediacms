@@ -69,6 +69,14 @@ RUN pip install --no-cache-dir uv && \
         libxmlsec1-dev \
         libpq-dev
 
+# git is needed by the plan-history tests; install it only in development/test builds
+RUN if [ "$DEVELOPMENT_MODE" = "True" ]; then \
+        apt-get update -y && \
+        apt-get install --no-install-recommends -y git && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
 # Copy ffmpeg from a published MediaCMS image and Bento4 from build image
 COPY --from=mediacms/mediacms:7.2.0@sha256:2767185c22196008aa9af1df7d33f00010e0bacf7c2a974f9d59cf3383550005 /usr/local/bin/ffmpeg /usr/local/bin/ffprobe /usr/local/bin/qt-faststart /usr/local/bin/
 COPY --from=build-image /home/mediacms.io/bento4 /home/mediacms.io/bento4

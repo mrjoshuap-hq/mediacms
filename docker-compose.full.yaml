@@ -1,7 +1,7 @@
 version: "3"
 
 # Whisper / full image. Build with: make docker-build-full
-# Override: MEDIACMS_FULL_IMAGE=ghcr.io/mrjoshuap/mediacms-full:beta
+# Override: MEDIACMS_FULL_IMAGE=ghcr.io/mrjoshuap-hq/mediacms-full:beta
 
 services:
   celery_worker:

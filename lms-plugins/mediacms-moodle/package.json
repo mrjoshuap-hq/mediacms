@@ -33,7 +33,7 @@
     "convert-source-map": "^2.0.0",
     "core-js-compat": "^3.51.0",
     "debug": "^4.4.3",
-    "electron-to-chromium": "^1.5.283",
+    "electron-to-chromium": "^1.5.486",
     "escalade": "^3.2.0",
     "esutils": "^2.0.3",
     "fill-range": "^7.1.1",

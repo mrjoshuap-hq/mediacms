@@ -1,7 +1,7 @@
 version: "3"
 
 # Default images are local tags from `make docker-build`.
-# Override for GHCR, e.g. MEDIACMS_IMAGE=ghcr.io/mrjoshuap/mediacms:beta
+# Override for GHCR, e.g. MEDIACMS_IMAGE=ghcr.io/mrjoshuap-hq/mediacms:beta
 
 services:
   migrations:

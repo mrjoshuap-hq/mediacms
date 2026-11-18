@@ -12,7 +12,7 @@
 .DEFAULT_GOAL := help
 
 # Local image tags (Compose defaults). Override for GHCR, e.g.:
-#   MEDIACMS_IMAGE=ghcr.io/mrjoshuap/mediacms:beta make docker-up
+#   MEDIACMS_IMAGE=ghcr.io/mrjoshuap-hq/mediacms:beta make docker-up
 MEDIACMS_IMAGE ?= mediacms:local
 MEDIACMS_FULL_IMAGE ?= mediacms:full
 MEDIACMS_DEV_IMAGE ?= mediacms-dev:latest

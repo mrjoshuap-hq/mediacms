@@ -35,7 +35,7 @@ else
   exit 1
 fi
 
-OWNER="$(echo "${GITHUB_REPOSITORY_OWNER:-mrjoshuap}" | tr '[:upper:]' '[:lower:]')"
+OWNER="$(echo "${GITHUB_REPOSITORY_OWNER:-mrjoshuap-hq}" | tr '[:upper:]' '[:lower:]')"
 BASE_IMAGE="ghcr.io/${OWNER}/mediacms"
 FULL_IMAGE="ghcr.io/${OWNER}/mediacms-full"
 

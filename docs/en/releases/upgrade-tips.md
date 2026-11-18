@@ -30,9 +30,9 @@ Practical commands and admin portal paths for known or likely problems when you 
 
 | Goal | Image |
 |------|-------|
-| Fork beta (churn OK) | `ghcr.io/mrjoshuap/mediacms:beta` (and `-full:beta` for Whisper) |
-| Fork stable floating | `ghcr.io/mrjoshuap/mediacms:stable` |
-| Fixed fork build | `ghcr.io/mrjoshuap/mediacms:10.0.0.YYYYMMDD[.N]` |
+| Fork beta (churn OK) | `ghcr.io/mrjoshuap-hq/mediacms:beta` (and `-full:beta` for Whisper) |
+| Fork stable floating | `ghcr.io/mrjoshuap-hq/mediacms:stable` |
+| Fixed fork build | `ghcr.io/mrjoshuap-hq/mediacms:10.0.0.YYYYMMDD[.N]` |
 | Upgrade drill aliases | `:upgrade-audit` / `:upgrade-audit-beta` |
 | Upstream baseline | `mediacms/mediacms` on Docker Hub |
 
@@ -43,11 +43,11 @@ Example Compose override for a **pinned** beta stamp:
 ```yaml
 services:
   web:
-    image: ghcr.io/mrjoshuap/mediacms:10.0.0.20261114
+    image: ghcr.io/mrjoshuap-hq/mediacms:10.0.0.YYYYMMDD
   celery_worker:
-    image: ghcr.io/mrjoshuap/mediacms:10.0.0.20261114
+    image: ghcr.io/mrjoshuap-hq/mediacms:10.0.0.YYYYMMDD
   celery_beat:
-    image: ghcr.io/mrjoshuap/mediacms:10.0.0.20261114
+    image: ghcr.io/mrjoshuap-hq/mediacms:10.0.0.YYYYMMDD
 ```
 
 ## Apply migrations

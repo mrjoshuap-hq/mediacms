@@ -1,4 +1,4 @@
-FROM python:3.13.16-slim-trixie AS build-image
+FROM python:3.15.2-slim-trixie AS build-image
 
 # Install system dependencies needed for downloading and extracting
 RUN apt-get update -y && \
@@ -17,7 +17,7 @@ RUN mkdir -p /home/mediacms.io/bento4 && \
     rm Bento4-SDK-1-6-0-637.x86_64-unknown-linux.zip
 
 ############ BASE RUNTIME IMAGE ############
-FROM python:3.13.16-slim-trixie AS base
+FROM python:3.15.2-slim-trixie AS base
 
 SHELL ["/bin/bash", "-c"]
 
